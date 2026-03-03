@@ -19,9 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel Cython && \
 
 # Copy data, model, and API source — preserve directory structure
 # so Path(__file__).parent.parent.parent == /app
-COPY data/movies.csv   ./data/movies.csv
-COPY data/train.csv    ./data/train.csv
-COPY models/           ./models/
+COPY data/movies.csv ./data/movies.csv
 COPY src/api/           ./src/api/
 
 EXPOSE 8000
