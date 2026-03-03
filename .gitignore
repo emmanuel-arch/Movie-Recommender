@@ -20,7 +20,8 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 
-# Data files (too large for Git)
-data/
+# Data files too large for Git (>100MB)
+data/genome_scores.csv
+data/train.csv
 models/
 submission/
