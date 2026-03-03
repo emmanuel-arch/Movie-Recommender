@@ -13,7 +13,7 @@ RUN apt-get update && \
 
 # Install Python deps (cached layer)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel Cython && \
     pip install --no-cache-dir "numpy<2" && \
     pip install --no-cache-dir -r requirements.txt
 
