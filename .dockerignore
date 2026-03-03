@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+web/node_modules/
+web/.next/
+
+# Notebooks
+notebooks/
+*.ipynb
+
+# Data (large CSVs — keep only what the API needs)
+data/genome_scores.csv
+data/genome_tags.csv
+data/imdb_data.csv
+data/links.csv
+data/sample_submission.csv
+data/tags.csv
+data/test.csv
+
+# Submissions
+submission/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
