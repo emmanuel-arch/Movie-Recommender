@@ -17,10 +17,13 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel Cython && \
     pip install --no-cache-dir "numpy<2" && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy data, model, and API source — preserve directory structure
+# Copy data and API source — preserve directory structure
 # so Path(__file__).parent.parent.parent == /app
 COPY data/movies.csv ./data/movies.csv
 COPY src/api/           ./src/api/
+
+# Download large files from Hugging Face at build time (not at startup)
+RUN python src/api/download_assets.py
 
 EXPOSE 8000
 

@@ -30,3 +30,6 @@ def ensure_assets():
             download_file(url, path)
         else:
             print(f"{path} already exists.")
+
+if __name__ == "__main__":
+    ensure_assets()
