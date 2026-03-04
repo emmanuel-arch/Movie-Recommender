@@ -1,26 +1,32 @@
 import os
 import requests
+from pathlib import Path
 
 HF_BASE_URL = "https://huggingface.co/Birgen/birgenai-model-assets/resolve/main"
 
+# Base directory = repo root (/app in Docker)
+BASE_DIR = Path(__file__).parent.parent.parent
+
 FILES = {
-    "data/train.csv": f"{HF_BASE_URL}/train.csv",
-    "models/svd_model.pkl": f"{HF_BASE_URL}/svd_model.pkl",
+    BASE_DIR / "data/train.csv": f"{HF_BASE_URL}/train.csv",
+    BASE_DIR / "models/svd_model.pkl": f"{HF_BASE_URL}/svd_model.pkl",
 }
 
 def download_file(url, destination):
     os.makedirs(os.path.dirname(destination), exist_ok=True)
 
     print(f"Downloading {destination}...")
-    response = requests.get(url)
+    response = requests.get(url, stream=True)
     response.raise_for_status()
 
     with open(destination, "wb") as f:
-        f.write(response.content)
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print(f"✅ Downloaded {destination}")
 
 def ensure_assets():
     for path, url in FILES.items():
-        if not os.path.exists(path):
+        if not path.exists():
             download_file(url, path)
         else:
             print(f"{path} already exists.")
