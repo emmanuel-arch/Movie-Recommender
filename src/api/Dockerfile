@@ -8,7 +8,7 @@ WORKDIR /app
 
 # System deps for scikit-surprise (Cython / C compiler)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc g++ && \
+    apt-get install -y --no-install-recommends gcc g++ curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python deps (cached layer) — use API-specific requirements
@@ -23,7 +23,9 @@ COPY data/movies.csv ./data/movies.csv
 COPY src/api/           ./src/api/
 
 # Download large files from Hugging Face at build time (not at startup)
-RUN python src/api/download_assets.py
+RUN mkdir -p data models && \
+    curl -L -o data/train.csv https://huggingface.co/Birgen/birgenai-model-assets/resolve/main/train.csv && \
+    curl -L -o models/svd_model.pkl https://huggingface.co/Birgen/birgenai-model-assets/resolve/main/svd_model.pkl
 
 EXPOSE 8000
 
