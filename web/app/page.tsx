@@ -1,38 +1,43 @@
-'use client'
-import { useState } from 'react'
-import OnboardingFlow from '@/components/OnboardingFlow'
-import RecommendationsPage from '@/components/RecommendationsPage'
+import { Suspense } from 'react';
+import Image from 'next/image';
+import Navbar from '@/components/Navbar';
+import HeroBanner from '@/components/HeroBanner';
+import HomeClient from './HomeClient';
 
-export type UserRating = { movieId: number; title: string; rating: number }
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-birgen-black">
+      <Navbar />
+      <HeroBanner />
+      <Suspense fallback={null}>
+        <HomeClient />
+      </Suspense>
+      <Footer />
+    </div>
+  );
+}
 
-export default function Home() {
-  const [userRatings, setUserRatings] = useState<UserRating[]>([])
-  const [recommendations, setRecommendations] = useState(null)
-  const [loading, setLoading] = useState(false)
-
-  const handleGetRecs = async (ratings: UserRating[]) => {
-    setLoading(true)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    const res = await fetch(`${apiUrl}/recommend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ratings: ratings.map(r => ({ movieId: r.movieId, rating: r.rating })), n: 20 })
-    })
-    const data = await res.json()
-    setRecommendations(data)
-    setLoading(false)
-  }
-
-  if (recommendations) {
-    return <RecommendationsPage
-      recs={recommendations}
-      userRatings={userRatings}
-      onReset={() => { setRecommendations(null); setUserRatings([]) }}
-    />
-  }
-
-  return <OnboardingFlow
-    onComplete={(ratings) => { setUserRatings(ratings); handleGetRecs(ratings) }}
-    loading={loading}
-  />
+function Footer() {
+  return (
+    <footer className="border-t border-birgen-border mt-16 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <Image
+          src="/Images/birgenaihub.png"
+          alt="BirgenAI"
+          width={120}
+          height={32}
+          className="h-7 w-auto object-contain"
+        />
+        <p className="text-birgen-muted text-sm">
+          © 2025 BirgenAI · AI-powered movie recommendations
+        </p>
+        <div className="flex items-center gap-1 text-birgen-muted text-xs">
+          <span>Movie data via</span>
+          <span className="text-birgen-silver">TMDB</span>
+          <span>·</span>
+          <span className="text-birgen-silver">MovieLens</span>
+        </div>
+      </div>
+    </footer>
+  );
 }
