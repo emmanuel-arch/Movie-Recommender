@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import HeroBanner from '@/components/HeroBanner';
+import Top5Kenya from '@/components/Top5Kenya';
 import HomeClient from './HomeClient';
 
 export default function HomePage() {
@@ -9,6 +10,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-birgen-black">
       <Navbar />
       <HeroBanner />
+      <Top5Kenya />
       <Suspense fallback={null}>
         <HomeClient />
       </Suspense>

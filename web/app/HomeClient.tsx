@@ -42,7 +42,7 @@ export default function HomeClient() {
     <div className="pb-8">
       {/* Carousels */}
       <MovieCarousel
-        title="🔥 Trending & Popular"
+        title="Trending & Popular"
         subtitle="Top-rated movies loved by millions"
         movies={allMovies.slice(0, 30)}
         loading={loading}
@@ -52,7 +52,7 @@ export default function HomeClient() {
       />
 
       <MovieCarousel
-        title="🎬 Action & Adventure"
+        title="Action & Adventure"
         movies={filterByGenre(allMovies, ['Action']).slice(0, 20)}
         loading={loading}
         userRatings={ratings}
@@ -61,7 +61,7 @@ export default function HomeClient() {
       />
 
       <MovieCarousel
-        title="😂 Comedy"
+        title="Comedy"
         movies={filterByGenre(allMovies, ['Comedy']).slice(0, 20)}
         loading={loading}
         userRatings={ratings}
@@ -70,7 +70,7 @@ export default function HomeClient() {
       />
 
       <MovieCarousel
-        title="🎭 Drama"
+        title="Drama"
         movies={filterByGenre(allMovies, ['Drama']).slice(0, 20)}
         loading={loading}
         userRatings={ratings}
@@ -79,7 +79,7 @@ export default function HomeClient() {
       />
 
       <MovieCarousel
-        title="🚀 Sci-Fi"
+        title="Sci-Fi"
         movies={filterByGenre(allMovies, ['Sci-Fi']).slice(0, 20)}
         loading={loading}
         userRatings={ratings}
@@ -88,7 +88,7 @@ export default function HomeClient() {
       />
 
       <MovieCarousel
-        title="👻 Horror & Thriller"
+        title="Horror & Thriller"
         movies={filterByGenre(allMovies, ['Horror', 'Thriller']).slice(0, 20)}
         loading={loading}
         userRatings={ratings}

@@ -156,3 +156,41 @@ body {
 .animate-for-you-glow {
   animation: forYouGlow 2s ease-in-out infinite;
 }
+
+/* Hero banner animations */
+@keyframes heroTitleEnter {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes heroMetaEnter {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.hero-title-enter {
+  animation: heroTitleEnter 0.6s ease-out both;
+}
+.hero-meta-enter {
+  animation: heroMetaEnter 0.5s 0.15s ease-out both;
+}
+
+/* Top 5 rank numbers — Netflix style outlined */
+.top5-number {
+  font-family: var(--font-bebas);
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+}
+
+/* Generic animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out both;
+}
+.animate-scale-in {
+  animation: scaleIn 0.25s ease-out both;
+}
