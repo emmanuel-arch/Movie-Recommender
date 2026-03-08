@@ -9,6 +9,8 @@ export interface Movie {
   year?: string | null;
   overview?: string;
   tmdb_id?: number;
+  stream_url?: string | null;
+  trailer_url?: string | null;
 }
 
 export interface RatingInput {

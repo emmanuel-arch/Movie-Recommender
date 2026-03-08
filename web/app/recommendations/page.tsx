@@ -5,12 +5,15 @@ import { Sparkles, RefreshCw, Star, ArrowLeft, TrendingUp } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import MovieCard, { MovieCardSkeleton } from '@/components/MovieCard';
 import { useRatings, useRecommendations } from '@/hooks/useRatings';
+import { useMyList } from '@/hooks/useMyList';
 import { Movie } from '@/types';
 import toast from 'react-hot-toast';
 
 export default function RecommendationsPage() {
   const { ratings, ratedMovies, rateMovie, getRatingInputs, count, hasEnoughRatings } = useRatings();
   const { recommendations, loading, error, fetchRecommendations } = useRecommendations();
+  const { myList, addToList, removeFromList } = useMyList();
+  const myListIds = new Set(myList.map((m) => m.movieId));
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
@@ -28,7 +31,7 @@ export default function RecommendationsPage() {
 
   const handleRate = (movie: Movie, rating: number) => {
     rateMovie(movie, rating);
-    toast.success(`Rated ${rating}/5 ⭐`, { duration: 1500 });
+    toast.success(`Rated ${rating}/5`, { duration: 1500 });
   };
 
   if (!hasEnoughRatings) {
@@ -40,23 +43,15 @@ export default function RecommendationsPage() {
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-birgen-red/10 border border-birgen-red/20 mb-6">
               <Star className="w-9 h-9 text-birgen-red" />
             </div>
-            <h1 className="font-display text-4xl text-white tracking-wide mb-3">
-              NOT ENOUGH RATINGS
-            </h1>
+            <h1 className="font-display text-4xl text-white tracking-wide mb-3">NOT ENOUGH RATINGS</h1>
             <p className="text-birgen-muted mb-2">
               You&apos;ve rated <strong className="text-white">{count}</strong> movie{count !== 1 ? 's' : ''}.
               Rate at least <strong className="text-birgen-red">5</strong> to unlock personalized picks.
             </p>
             <div className="h-2 bg-birgen-border rounded-full overflow-hidden mb-6">
-              <div
-                className="h-full bg-red-gradient rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, (count / 5) * 100)}%` }}
-              />
+              <div className="h-full bg-red-gradient rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (count / 5) * 100)}%` }} />
             </div>
-            <Link
-              href="/onboarding"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold rounded-lg transition-all hover:scale-105 active:scale-95 red-glow"
-            >
+            <Link href="/onboarding" className="inline-flex items-center gap-2 px-6 py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold rounded-lg transition-all hover:scale-105 active:scale-95 red-glow">
               <Star className="w-4 h-4" />
               Rate Movies Now
             </Link>
@@ -70,8 +65,7 @@ export default function RecommendationsPage() {
     <div className="min-h-screen bg-birgen-black">
       <Navbar ratingCount={count} />
 
-      {/* Header */}
-      <div className="pt-24 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="pt-24 pb-8 px-4 sm:px-6 lg:px-12 max-w-[1920px] mx-auto">
         <Link href="/onboarding" className="inline-flex items-center gap-2 text-birgen-muted hover:text-white text-sm transition-colors mb-6">
           <ArrowLeft className="w-4 h-4" />
           Back to Rating
@@ -83,12 +77,8 @@ export default function RecommendationsPage() {
               <Sparkles className="w-5 h-5 text-birgen-red" />
               <span className="text-birgen-red text-sm font-semibold uppercase tracking-wider">Personalized For You</span>
             </div>
-            <h1 className="font-display text-4xl sm:text-5xl text-white tracking-wide">
-              YOUR PICKS
-            </h1>
-            <p className="text-birgen-muted mt-1">
-              Based on your {count} ratings · Updated by BirgenAI SVD model
-            </p>
+            <h1 className="font-display text-4xl sm:text-5xl text-white tracking-wide">YOUR PICKS</h1>
+            <p className="text-birgen-muted mt-1">Based on your {count} ratings</p>
           </div>
           <button
             onClick={handleRefresh}
@@ -101,34 +91,25 @@ export default function RecommendationsPage() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="mx-4 sm:mx-6 lg:mx-8 max-w-7xl mb-6 p-4 rounded-xl bg-red-900/20 border border-red-500/30 text-red-400 text-sm">
+        <div className="mx-4 sm:mx-6 lg:mx-12 max-w-[1920px] mb-6 p-4 rounded-xl bg-red-900/20 border border-red-500/30 text-red-400 text-sm">
           Failed to load recommendations. Please try refreshing.
         </div>
       )}
 
       {/* Your ratings summary */}
-      <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto mb-8">
+      <div className="px-4 sm:px-6 lg:px-12 max-w-[1920px] mx-auto mb-8">
         <h2 className="text-white font-semibold mb-3 flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-birgen-red" />
           Your Rating Profile
         </h2>
-        <div className="flex gap-3 overflow-x-auto pb-2 scroll-container">
+        <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
           {ratedMovies.map(({ movie, rating }) => (
             <div key={movie.movieId} className="flex-shrink-0 w-32 p-3 rounded-xl bg-birgen-card border border-birgen-border text-center">
-              <div className="text-3xl mb-1">🎬</div>
-              <p className="text-white text-xs line-clamp-2 leading-tight mb-1.5">
-                {movie.title.replace(/\s*\(\d{4}\)$/, '')}
-              </p>
+              <p className="text-white text-xs line-clamp-2 leading-tight mb-1.5">{movie.title.replace(/\s*\(\d{4}\)$/, '')}</p>
               <div className="flex justify-center gap-0.5">
                 {[1, 2, 3, 4, 5].map((s) => (
-                  <Star
-                    key={s}
-                    className="w-2.5 h-2.5"
-                    fill={rating >= s ? '#E50914' : 'none'}
-                    color={rating >= s ? '#E50914' : '#6B6B6B'}
-                  />
+                  <Star key={s} className="w-2.5 h-2.5" fill={rating >= s ? '#E50914' : 'none'} color={rating >= s ? '#E50914' : '#6B6B6B'} />
                 ))}
               </div>
             </div>
@@ -136,23 +117,20 @@ export default function RecommendationsPage() {
         </div>
       </div>
 
-      {/* Recommendations grid */}
-      <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pb-16">
+      {/* Recommendations grid — landscape */}
+      <div className="px-4 sm:px-6 lg:px-12 max-w-[1920px] mx-auto pb-16">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-white font-semibold">
-            {loading ? 'Generating...' : `${recommendations.length} Recommendations`}
-          </h2>
+          <h2 className="text-white font-semibold">{loading ? 'Generating...' : `${recommendations.length} Recommendations`}</h2>
           {!loading && recommendations.length > 0 && (
             <span className="text-birgen-muted text-xs">Sorted by predicted rating</span>
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {loading
             ? Array.from({ length: 24 }).map((_, i) => <MovieCardSkeleton key={i} />)
             : recommendations.map((movie, i) => (
                 <div key={movie.movieId} className="relative">
-                  {/* Rank badge for top 3 */}
                   {i < 3 && (
                     <div className="absolute -top-2 -left-2 z-10 w-7 h-7 rounded-full bg-birgen-red flex items-center justify-center text-white text-xs font-bold shadow-lg">
                       #{i + 1}
@@ -163,6 +141,9 @@ export default function RecommendationsPage() {
                     userRating={ratings.get(movie.movieId)}
                     onRate={handleRate}
                     showRating
+                    inMyList={myListIds.has(movie.movieId)}
+                    onAddToList={addToList}
+                    onRemoveFromList={removeFromList}
                   />
                 </div>
               ))}

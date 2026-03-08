@@ -3,12 +3,12 @@ import './globals.css';
 import { Toaster } from 'react-hot-toast';
 
 export const metadata: Metadata = {
-  title: 'BirgenAI Movies — Personalized Picks, Powered by AI',
+  title: 'BirgenAI Movies - Personalized Picks, Powered by AI',
   description:
     'Discover movies tailored to your taste. BirgenAI uses machine learning to recommend what you\'ll love next.',
   keywords: 'movie recommendations, AI movies, personalized picks, BirgenAI',
   openGraph: {
-    title: 'BirgenAI Movies',
+    title: 'BirgenAI Movies - Personalized Picks, Powered by AI',
     description: 'AI-powered movie recommendations just for you.',
     url: 'https://movies.birgenai.com',
     siteName: 'BirgenAI Movies',
@@ -16,11 +16,12 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'BirgenAI Movies',
+    title: 'BirgenAI Movies - Personalized Picks, Powered by AI',
     description: 'AI-powered movie recommendations just for you.',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: '/Images/logo.png',
+    apple: '/Images/logo.png',
   },
 };
 

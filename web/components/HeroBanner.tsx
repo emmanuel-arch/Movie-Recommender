@@ -13,12 +13,17 @@ import {
   RotateCcw,
   RotateCw,
   ArrowLeft,
+  Film,
 } from 'lucide-react';
+import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
+import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { assetUrl } from '@/lib/assets';
 
 /* ────────────────────────────────────────────────────────
    5 Featured movies — rotating hero with background video
    ──────────────────────────────────────────────────────── */
 interface FeaturedMovie {
+  movieId: number;
   title: string;
   year: string;
   rating: string;
@@ -29,10 +34,12 @@ interface FeaturedMovie {
   backdrop: string;
   video: string;
   tagline: string;
+  stream_url?: string | null;
 }
 
 const FEATURED_MOVIES: FeaturedMovie[] = [
   {
+    movieId: 168250,
     title: 'Get Out',
     year: '2017',
     rating: '7.7',
@@ -41,11 +48,12 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'A young African-American visits his white girlfriend\'s parents for the weekend, where his simmering uneasiness about their reception of him eventually reaches a boiling point.',
     genres: ['Horror', 'Thriller', 'Mystery'],
-    backdrop: '/Images/getout.png',
-    video: '/Videos/hero-getout-2017.mp4',
+    backdrop: assetUrl('/Images/getout.png'),
+    video: assetUrl('/Videos/hero-getout-2017.mp4'),
     tagline: '#1 in Movies Today',
   },
   {
+    movieId: 139644,
     title: 'Sicario',
     year: '2015',
     rating: '7.6',
@@ -54,11 +62,12 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'An idealistic FBI agent is enlisted by a government task force to aid in the escalating war against drugs at the border area between the U.S. and Mexico.',
     genres: ['Action', 'Crime', 'Drama'],
-    backdrop: '/Images/hero-sicario.jpg',
-    video: '/Videos/hero-sicario-2015.mp4',
+    backdrop: assetUrl('/Images/hero-sicario.jpg'),
+    video: assetUrl('/Videos/hero-sicario-2015.mp4'),
     tagline: '#2 Trending in Kenya',
   },
   {
+    movieId: 79132,
     title: 'Inception',
     year: '2010',
     rating: '8.8',
@@ -67,11 +76,12 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
     genres: ['Sci-Fi', 'Action', 'Thriller'],
-    backdrop: '/Images/hero-inception.webp',
-    video: '/Videos/hero-inception-2010.mp4',
+    backdrop: assetUrl('/Images/hero-inception.webp'),
+    video: assetUrl('/Videos/hero-inception-2010.mp4'),
     tagline: '#1 Top 10 Movies This Week',
   },
   {
+    movieId: 58559,
     title: 'The Dark Knight',
     year: '2008',
     rating: '9.0',
@@ -80,11 +90,12 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.',
     genres: ['Action', 'Crime', 'Drama'],
-    backdrop: '/Images/hero-the-dark-knight-2008.webp',
-    video: '/Videos/hero-thedarkknight-2008.mp4',
+    backdrop: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
+    video: assetUrl('/Videos/hero-thedarkknight-2008.mp4'),
     tagline: '#3 Most Watched Worldwide',
   },
   {
+    movieId: 74458,
     title: 'Shutter Island',
     year: '2010',
     rating: '8.2',
@@ -93,8 +104,8 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'In 1954, a U.S. Marshal investigates the disappearance of a murderer who escaped from a hospital for the criminally insane on a remote island.',
     genres: ['Mystery', 'Thriller'],
-    backdrop: '/Images/hero-shutter-island.jpg',
-    video: '/Videos/hero-shutter-island.mp4',
+    backdrop: assetUrl('/Images/hero-shutter-island.jpg'),
+    video: assetUrl('/Videos/hero-shutter-island.mp4'),
     tagline: '#5 Top 10 Thrillers',
   },
 ];
@@ -169,11 +180,13 @@ function MoreInfoModal({
   );
 }
 
-/* ── Format seconds to m:ss ────────────────────────────── */
+/* ── Format seconds to m:ss or h:mm:ss ─────────────────── */
 function formatTime(s: number) {
   if (!isFinite(s) || s < 0) return '0:00';
-  const m = Math.floor(s / 60);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
@@ -182,10 +195,13 @@ function FullscreenPlayer({
   movies,
   startIndex,
   onClose,
+  streamMode = false,
 }: {
   movies: FeaturedMovie[];
   startIndex: number;
   onClose: () => void;
+  /** When true, plays the full movie stream instead of the hero clip */
+  streamMode?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentIdx, setCurrentIdx] = useState(startIndex);
@@ -196,7 +212,12 @@ function FullscreenPlayer({
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const controlsTimer = useRef<NodeJS.Timeout>();
+  const { getPosition, savePosition } = usePlaybackProgress();
   const movie = movies[currentIdx];
+
+  // Determine video source: stream URL (full movie) or hero clip
+  const streamUrl = movie.stream_url || getStreamUrl(movie.movieId) || getStreamMp4Url(movie.movieId);
+  const videoSrc = streamMode && streamUrl ? streamUrl : movie.video;
 
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
@@ -230,7 +251,16 @@ function FullscreenPlayer({
     setPaused(false);
     setProgress(0);
     setCurrentTime(0);
-  }, [currentIdx]);
+    // Restore saved position in stream mode
+    if (streamMode) {
+      const handleLoaded = () => {
+        const saved = getPosition(movie.movieId);
+        if (saved > 0) v.currentTime = saved;
+      };
+      v.addEventListener('loadedmetadata', handleLoaded);
+      return () => v.removeEventListener('loadedmetadata', handleLoaded);
+    }
+  }, [currentIdx, streamMode, movie.movieId, getPosition]);
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -271,6 +301,10 @@ function FullscreenPlayer({
     setProgress((v.currentTime / v.duration) * 100);
     setCurrentTime(v.currentTime);
     setDuration(v.duration);
+    // Save progress for stream mode
+    if (streamMode && Math.floor(v.currentTime) % 5 === 0) {
+      savePosition(movie.movieId, v.currentTime, v.duration);
+    }
   };
 
   const onProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -296,7 +330,7 @@ function FullscreenPlayer({
         onTimeUpdate={onTimeUpdate}
         onEnded={goNext}
       >
-        <source src={movie.video} type="video/mp4" />
+        <source src={videoSrc} type={videoSrc.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'} />
       </video>
 
       {/* Controls overlay */}
@@ -316,6 +350,11 @@ function FullscreenPlayer({
           </button>
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-semibold text-base sm:text-lg truncate">{movie.title}</h3>
+            {streamMode && (
+              <span className="text-birgen-red text-xs font-medium flex items-center gap-1 mt-0.5">
+                <Film className="w-3 h-3" /> Full Movie
+              </span>
+            )}
           </div>
         </div>
 
@@ -400,6 +439,7 @@ export default function HeroBanner() {
   const [showPlayer, setShowPlayer] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [playerStartIdx, setPlayerStartIdx] = useState(0);
+  const [playerStreamMode, setPlayerStreamMode] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -431,13 +471,15 @@ export default function HeroBanner() {
     setActiveIdx((i) => (i + 1) % FEATURED_MOVIES.length);
   };
 
-  const handlePlay = (idx?: number) => {
+  const handlePlay = (idx?: number, stream?: boolean) => {
     setPlayerStartIdx(idx ?? activeIdx);
+    setPlayerStreamMode(stream ?? false);
     setShowPlayer(true);
   };
 
   const handleClosePlayer = () => {
     setShowPlayer(false);
+    setPlayerStreamMode(false);
   };
 
   const handleMoreInfo = () => setShowInfo(true);
@@ -496,8 +538,11 @@ export default function HeroBanner() {
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
           <div className="max-w-xl" key={activeIdx}>
             {/* Tagline badge */}
-            <div className="flex items-center gap-2 mb-3 animate-fade-in">
-              <span className="text-birgen-red font-bold text-sm tracking-wide uppercase">
+            <div className="flex items-center gap-3 mb-4 animate-fade-in">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-birgen-red text-white text-xs font-bold uppercase tracking-wider shadow-lg shadow-birgen-red/30">
+                TOP 5
+              </span>
+              <span className="text-white text-lg sm:text-xl font-semibold tracking-wide drop-shadow-lg">
                 {movie.tagline}
               </span>
             </div>
@@ -533,7 +578,7 @@ export default function HeroBanner() {
             {/* CTA: Play + More Info (Netflix style) */}
             <div className="flex items-center gap-3 hero-meta-enter">
               <button
-                onClick={() => handlePlay()}
+                onClick={() => handlePlay(undefined, hasStream(movie.movieId))}
                 className="flex items-center gap-2 px-7 py-3 bg-white hover:bg-white/90 text-black font-bold rounded-md transition-all duration-200 hover:scale-[1.03] active:scale-95 text-base"
               >
                 <Play className="w-6 h-6 fill-black" />
@@ -571,6 +616,7 @@ export default function HeroBanner() {
           movies={FEATURED_MOVIES}
           startIndex={playerStartIdx}
           onClose={handleClosePlayer}
+          streamMode={playerStreamMode}
         />
       )}
 
@@ -579,7 +625,7 @@ export default function HeroBanner() {
         <MoreInfoModal
           movie={movie}
           onClose={handleCloseInfo}
-          onPlay={() => { handleCloseInfo(); handlePlay(); }}
+          onPlay={() => { handleCloseInfo(); handlePlay(undefined, hasStream(movie.movieId)); }}
         />
       )}
     </>

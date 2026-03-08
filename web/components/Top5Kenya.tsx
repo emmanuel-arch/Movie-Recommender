@@ -14,9 +14,13 @@ import {
   Volume2,
   VolumeX,
   ArrowLeft,
+  Film,
 } from 'lucide-react';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
+import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
+import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { assetUrl } from '@/lib/assets';
 import toast from 'react-hot-toast';
 
 /* ── The 5 featured movies with MovieLens IDs ─────────── */
@@ -49,9 +53,9 @@ const TOP5_MOVIES: Top5Movie[] = [
       "A young African-American visits his white girlfriend's parents for the weekend, where his simmering uneasiness about their reception of him eventually reaches a boiling point.",
     genres: 'Horror|Thriller|Mystery',
     genreList: ['Horror', 'Thriller', 'Mystery'],
-    poster: '/Images/getout.png',
-    backdrop: '/Images/getout.png',
-    trailer: '/Videos/trailer-getout-2017.mp4',
+    poster: assetUrl('/Images/getout.png'),
+    backdrop: assetUrl('/Images/getout.png'),
+    trailer: assetUrl('/Videos/trailer-getout-2017.mp4'),
   },
   {
     movieId: 139644,
@@ -65,9 +69,9 @@ const TOP5_MOVIES: Top5Movie[] = [
       'An idealistic FBI agent is enlisted by a government task force to aid in the escalating war against drugs at the border area between the U.S. and Mexico.',
     genres: 'Crime|Drama|Mystery',
     genreList: ['Action', 'Crime', 'Drama'],
-    poster: '/Images/hero-sicario.jpg',
-    backdrop: '/Images/hero-sicario.jpg',
-    trailer: '/Videos/trailer-sicario-2015.mp4',
+    poster: assetUrl('/Images/hero-sicario.jpg'),
+    backdrop: assetUrl('/Images/hero-sicario.jpg'),
+    trailer: assetUrl('/Videos/trailer-sicario-2015.mp4'),
   },
   {
     movieId: 79132,
@@ -81,9 +85,9 @@ const TOP5_MOVIES: Top5Movie[] = [
       'A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
     genres: 'Action|Crime|Drama|Mystery|Sci-Fi|Thriller|IMAX',
     genreList: ['Sci-Fi', 'Action', 'Thriller'],
-    poster: '/Images/hero-inception.webp',
-    backdrop: '/Images/hero-inception.webp',
-    trailer: '/Videos/trailer-inception-2010.mp4',
+    poster: assetUrl('/Images/hero-inception.webp'),
+    backdrop: assetUrl('/Images/hero-inception.webp'),
+    trailer: assetUrl('/Videos/trailer-inception-2010.mp4'),
   },
   {
     movieId: 58559,
@@ -97,9 +101,9 @@ const TOP5_MOVIES: Top5Movie[] = [
       'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.',
     genres: 'Action|Crime|Drama|IMAX',
     genreList: ['Action', 'Crime', 'Drama'],
-    poster: '/Images/hero-the-dark-knight-2008.webp',
-    backdrop: '/Images/hero-the-dark-knight-2008.webp',
-    trailer: '/Videos/trailer-thedarkknight-2008.mp4',
+    poster: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
+    backdrop: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
+    trailer: assetUrl('/Videos/trailer-thedarkknight-2008.mp4'),
   },
   {
     movieId: 74458,
@@ -113,17 +117,19 @@ const TOP5_MOVIES: Top5Movie[] = [
       'In 1954, a U.S. Marshal investigates the disappearance of a murderer who escaped from a hospital for the criminally insane on a remote island.',
     genres: 'Drama|Mystery|Thriller',
     genreList: ['Mystery', 'Thriller', 'Drama'],
-    poster: '/Images/hero-shutter-island.jpg',
-    backdrop: '/Images/hero-shutter-island.jpg',
-    trailer: '/Videos/trailer-shutter-island.mp4',
+    poster: assetUrl('/Images/hero-shutter-island.jpg'),
+    backdrop: assetUrl('/Images/hero-shutter-island.jpg'),
+    trailer: assetUrl('/Videos/trailer-shutter-island.mp4'),
   },
 ];
 
 /* ── Format time helper ─────────────────────────────────── */
 function formatTime(s: number) {
   if (!isFinite(s) || s < 0) return '0:00';
-  const m = Math.floor(s / 60);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
@@ -353,12 +359,14 @@ function TrailerPlayer({
   onClose,
   onRateMovie,
   userRatings,
+  streamMode = false,
 }: {
   movies: Top5Movie[];
   startIndex: number;
   onClose: () => void;
   onRateMovie: (movie: Top5Movie, rating: number) => void;
   userRatings: Map<number, number>;
+  streamMode?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentIdx, setCurrentIdx] = useState(startIndex);
@@ -370,7 +378,15 @@ function TrailerPlayer({
   const [showControls, setShowControls] = useState(true);
   const [showRatingPopup, setShowRatingPopup] = useState(false);
   const controlsTimer = useRef<NodeJS.Timeout>();
+  const lastSaveRef = useRef(0);
   const movie = movies[currentIdx];
+  const { getPosition, savePosition } = usePlaybackProgress();
+
+  // Compute video source
+  const isStreaming = streamMode && hasStream(movie.movieId);
+  const videoSrc = isStreaming
+    ? (getStreamUrl(movie.movieId) || getStreamMp4Url(movie.movieId) || movie.trailer)
+    : movie.trailer;
 
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
@@ -408,6 +424,19 @@ function TrailerPlayer({
     setProgress(0);
     setCurrentTime(0);
     setShowRatingPopup(false);
+    lastSaveRef.current = 0;
+
+    // Restore saved position for full movies
+    if (isStreaming) {
+      const saved = getPosition(movie.movieId);
+      if (saved > 0) {
+        const onLoaded = () => {
+          v.currentTime = saved;
+          v.removeEventListener('loadedmetadata', onLoaded);
+        };
+        v.addEventListener('loadedmetadata', onLoaded);
+      }
+    }
   }, [currentIdx]);
 
   const togglePlay = () => {
@@ -470,6 +499,15 @@ function TrailerPlayer({
     setProgress((v.currentTime / v.duration) * 100);
     setCurrentTime(v.currentTime);
     setDuration(v.duration);
+
+    // Save playback progress every 5s in stream mode
+    if (isStreaming) {
+      const now = Date.now();
+      if (now - lastSaveRef.current > 5000) {
+        savePosition(movie.movieId, v.currentTime, v.duration);
+        lastSaveRef.current = now;
+      }
+    }
   };
 
   const onProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -492,7 +530,10 @@ function TrailerPlayer({
         onTimeUpdate={onTimeUpdate}
         onEnded={handleTrailerEnded}
       >
-        <source src={movie.trailer} type="video/mp4" />
+        <source
+          src={videoSrc}
+          type={videoSrc.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'}
+        />
       </video>
 
       {/* Controls overlay */}
@@ -513,7 +554,10 @@ function TrailerPlayer({
             <h3 className="text-white font-semibold text-base sm:text-lg truncate">
               {movie.displayTitle}
             </h3>
-            <p className="text-white/50 text-xs">Full Trailer</p>
+            <p className="text-white/50 text-xs flex items-center gap-1">
+              {isStreaming && <Film className="w-3 h-3 text-birgen-red" />}
+              {isStreaming ? 'Full Movie' : 'Full Trailer'}
+            </p>
           </div>
         </div>
 
@@ -760,6 +804,7 @@ export default function Top5Kenya() {
           onClose={() => setTrailerPlayer({ open: false, startIndex: 0 })}
           onRateMovie={handleRate}
           userRatings={ratings}
+          streamMode={hasStream(TOP5_MOVIES[trailerPlayer.startIndex]?.movieId ?? 0)}
         />
       )}
     </>

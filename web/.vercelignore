@@ -1,0 +1,14 @@
+# Vercel deploy ignore list
+# Since /web is set as root directory, paths are relative to /web
+
+# Node modules (auto-ignored but explicit)
+node_modules/
+
+# Large video files — served from Cloudflare R2 instead
+public/Videos/
+
+# Dev/editor files
+.env.local
+.env*.local
+.vscode/
+*.log

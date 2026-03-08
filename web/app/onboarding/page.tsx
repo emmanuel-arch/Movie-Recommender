@@ -1,14 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Star, Sparkles, Trash2, ChevronRight, Search } from 'lucide-react';
+import { Star, Sparkles, Trash2, ChevronRight } from 'lucide-react';
 import Navbar from '@/components/Navbar';
-import MovieCard from '@/components/MovieCard';
-import { MovieCardSkeleton } from '@/components/MovieCard';
+import MovieCard, { MovieCardSkeleton } from '@/components/MovieCard';
 import SearchBar from '@/components/SearchBar';
 import { getPopularMovies } from '@/lib/api';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
+import { useMyList } from '@/hooks/useMyList';
 import toast from 'react-hot-toast';
 
 const GENRE_TABS = ['All', 'Action', 'Comedy', 'Drama', 'Sci-Fi', 'Horror', 'Thriller', 'Romance', 'Animation'];
@@ -18,6 +18,8 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [activeGenre, setActiveGenre] = useState('All');
   const { ratings, ratedMovies, rateMovie, removeRating, count, hasEnoughRatings } = useRatings();
+  const { myList, addToList, removeFromList } = useMyList();
+  const myListIds = new Set(myList.map((m) => m.movieId));
 
   useEffect(() => {
     getPopularMovies(100)
@@ -39,23 +41,19 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-birgen-black">
       <Navbar ratingCount={count} />
 
-      {/* Page Header */}
-      <div className="pt-24 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="pt-24 pb-8 px-4 sm:px-6 lg:px-12 max-w-[1920px] mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-end gap-6 justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Star className="w-5 h-5 text-birgen-red fill-birgen-red" />
               <span className="text-birgen-red text-sm font-semibold uppercase tracking-wider">Rate Movies</span>
             </div>
-            <h1 className="font-display text-4xl sm:text-5xl text-white tracking-wide">
-              TRAIN YOUR AI
-            </h1>
+            <h1 className="font-display text-4xl sm:text-5xl text-white tracking-wide">TRAIN YOUR AI</h1>
             <p className="text-birgen-muted mt-2 max-w-lg">
-              Rate movies you&apos;ve watched. The more you rate, the more personalized your recommendations become. Aim for at least 10 ratings.
+              Rate movies you&apos;ve watched. The more you rate, the more personalized your recommendations become.
             </p>
           </div>
 
-          {/* Progress */}
           <div className="flex-shrink-0 p-5 rounded-2xl bg-birgen-card border border-birgen-border min-w-[200px]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-birgen-muted text-sm">Progress</span>
@@ -77,24 +75,16 @@ export default function OnboardingPage() {
                 <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             ) : (
-              <p className="text-birgen-muted text-xs text-center">
-                Rate {Math.max(0, 5 - count)} more to unlock
-              </p>
+              <p className="text-birgen-muted text-xs text-center">Rate {Math.max(0, 5 - count)} more to unlock</p>
             )}
           </div>
         </div>
 
-        {/* Search */}
         <div className="mt-6">
-          <SearchBar
-            onRate={handleRate}
-            userRatings={ratings}
-            placeholder="Search for a specific movie to rate..."
-          />
+          <SearchBar onRate={handleRate} userRatings={ratings} placeholder="Search for a specific movie to rate..." />
         </div>
 
-        {/* Genre tabs */}
-        <div className="flex gap-2 mt-6 overflow-x-auto pb-2 scroll-container">
+        <div className="flex gap-2 mt-6 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
           {GENRE_TABS.map((g) => (
             <button
               key={g}
@@ -111,18 +101,13 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 pb-16">
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Movie grid */}
           <div className="flex-1">
-            <p className="text-birgen-muted text-sm mb-4">
-              {filtered.length} movies · Click stars to rate
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <p className="text-birgen-muted text-sm mb-4">{filtered.length} movies</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {loading
-                ? Array.from({ length: 20 }).map((_, i) => (
-                    <MovieCardSkeleton key={i} size="sm" />
-                  ))
+                ? Array.from({ length: 20 }).map((_, i) => <MovieCardSkeleton key={i} />)
                 : filtered.map((movie) => (
                     <MovieCard
                       key={movie.movieId}
@@ -130,13 +115,14 @@ export default function OnboardingPage() {
                       userRating={ratings.get(movie.movieId)}
                       onRate={handleRate}
                       showRating
-                      size="sm"
+                      inMyList={myListIds.has(movie.movieId)}
+                      onAddToList={addToList}
+                      onRemoveFromList={removeFromList}
                     />
                   ))}
             </div>
           </div>
 
-          {/* Ratings sidebar */}
           {count > 0 && (
             <div className="lg:w-72 flex-shrink-0">
               <div className="sticky top-20 p-5 rounded-2xl bg-birgen-card border border-birgen-border">
@@ -148,17 +134,10 @@ export default function OnboardingPage() {
                   {ratedMovies.map(({ movie, rating }) => (
                     <div key={movie.movieId} className="flex items-center gap-3 group">
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm truncate">
-                          {movie.title.replace(/\s*\(\d{4}\)$/, '')}
-                        </p>
+                        <p className="text-white text-sm truncate">{movie.title.replace(/\s*\(\d{4}\)$/, '')}</p>
                         <div className="flex gap-0.5 mt-1">
                           {[1, 2, 3, 4, 5].map((s) => (
-                            <Star
-                              key={s}
-                              className="w-3 h-3"
-                              fill={rating >= s ? '#E50914' : 'none'}
-                              color={rating >= s ? '#E50914' : '#6B6B6B'}
-                            />
+                            <Star key={s} className="w-3 h-3" fill={rating >= s ? '#E50914' : 'none'} color={rating >= s ? '#E50914' : '#6B6B6B'} />
                           ))}
                         </div>
                       </div>

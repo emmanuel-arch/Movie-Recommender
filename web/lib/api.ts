@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Movie, RatingInput, RecommendRequest } from '@/types';
+import { enrichMoviesWithStreamUrls } from '@/lib/stream';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -21,10 +22,11 @@ async function enrichWithPosters(movies: Movie[]): Promise<Movie[]> {
       body: JSON.stringify(movies),
     });
     if (!res.ok) throw new Error('Enrich failed');
-    return (await res.json()) as Movie[];
+    const enriched = (await res.json()) as Movie[];
+    return enrichMoviesWithStreamUrls(enriched);
   } catch {
-    // If enrichment fails, return movies without posters
-    return movies;
+    // If enrichment fails, still try to add stream URLs
+    return enrichMoviesWithStreamUrls(movies);
   }
 }
 
