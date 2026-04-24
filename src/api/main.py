@@ -3,6 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+# Load local .env for dev. No-op in Cloud Run where env vars are injected.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from recommender import Recommender
 from kenyan_bridge import (
     compute_genre_weights,

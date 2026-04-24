@@ -17,6 +17,14 @@ web/.next/
 .DS_Store
 Thumbs.db
 
+# Secrets — never commit local env files with real credentials
+.env
+.env.local
+.env.*.local
+web/.env.local
+src/api/.env
+infra/cloudflare/*/.dev.vars
+
 # Jupyter
 .ipynb_checkpoints/
 

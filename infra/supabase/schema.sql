@@ -111,13 +111,25 @@ create policy "monthly_usage_self_select"
 -- Mirrors the MovieLens structure but tied to a real auth user. These feed the
 -- SVD recommender and the Kenyan algorithm bridge.
 create table if not exists public.ratings (
+  id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references auth.users(id) on delete cascade,
   movie_id   integer,
   movie_slug text,
   rating     numeric(2,1) not null check (rating between 0.5 and 5.0),
   rated_at   timestamptz not null default now(),
-  primary key (user_id, coalesce(movie_id, -1), coalesce(movie_slug, ''))
+  check (movie_id is not null or movie_slug is not null)
 );
+
+-- One rating per (user, movie). Postgres can't put COALESCE inside a primary
+-- key, so we enforce uniqueness through two partial unique indexes — one per
+-- non-null key. The surrogate `id` column gives PostgREST a stable row handle.
+create unique index if not exists ratings_user_movie_id_unique
+  on public.ratings (user_id, movie_id)
+  where movie_id is not null;
+
+create unique index if not exists ratings_user_movie_slug_unique
+  on public.ratings (user_id, movie_slug)
+  where movie_slug is not null;
 
 create index if not exists ratings_movie_id on public.ratings (movie_id) where movie_id is not null;
 create index if not exists ratings_movie_slug on public.ratings (movie_slug) where movie_slug is not null;

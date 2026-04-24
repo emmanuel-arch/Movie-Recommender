@@ -37,17 +37,41 @@ Complete guide to deploy the BirgenAI Movies app on **Vercel** with **Cloudflare
 
 ### 1.2 Environment Variables
 
-In Vercel → Project → Settings → Environment Variables, add:
+In Vercel → Project → Settings → Environment Variables, add the following.
+Mirror the keys in `web/.env.example` — never paste live values into the repo.
 
-| Variable | Value | Environment |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://birgenai-api-529186868469.us-central1.run.app` | Production, Preview, Dev |
-| `NEXT_PUBLIC_TMDB_API_KEY` | `your_tmdb_v3_api_key` | Production, Preview, Dev |
-| `TMDB_READ_ACCESS_TOKEN` | `your_tmdb_v4_read_token` | Production, Preview, Dev |
-| `NEXT_PUBLIC_R2_PUBLIC_URL` | `https://assets.birgenai.com` | Production, Preview |
-| `NEXT_PUBLIC_CF_STREAM_DOMAIN` | `customer-XXXXX.cloudflarestream.com` | Production, Preview |
+| Variable | Value | Environment | Notes |
+|---|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://birgenai-api-<project>.<region>.run.app` | Production, Preview, Dev | FastAPI Cloud Run URL |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<your-project-ref>.supabase.co` | Production, Preview, Dev | From Supabase → Project Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_…` | Production, Preview, Dev | Publishable / anon key — safe in browser |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGci…` (service_role JWT) | Production, Preview | **Server-only.** Used by route handlers / API routes; never `NEXT_PUBLIC_*`. |
+| `NEXT_PUBLIC_TMDB_API_KEY` | `your_tmdb_v3_api_key` | Production, Preview, Dev | |
+| `TMDB_READ_ACCESS_TOKEN` | `your_tmdb_v4_read_token` | Production, Preview, Dev | |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | `https://assets.birgenai.com` | Production, Preview | |
+| `NEXT_PUBLIC_CF_STREAM_DOMAIN` | `customer-XXXXX.cloudflarestream.com` | Production, Preview | Optional |
+| `NEXT_PUBLIC_FREE_TIER_CAP_SECONDS` | `72000` | Production, Preview, Dev | 20h/month cap |
+| `NEXT_PUBLIC_WARN_THRESHOLD_SECONDS` | `57600` | Production, Preview, Dev | 16h warn threshold |
 
 > **Note:** Leave `NEXT_PUBLIC_R2_PUBLIC_URL` empty for local development so assets serve from `public/`.
+
+> **Don't commit `.env.local`** — it's git-ignored at both the repo root
+> and `web/.gitignore`. Only `.env.example` (placeholders) is tracked.
+
+### 1.3 Supabase redirect URLs (one-time, after first deploy)
+
+In Supabase → Authentication → URL Configuration, add the production callback so
+OAuth and magic-link emails come back to the right place:
+
+- **Site URL**: `https://movies.birgenai.com`
+- **Additional Redirect URLs**:
+  - `https://movies.birgenai.com/auth/callback`
+  - `https://*.vercel.app/auth/callback` (preview deployments)
+  - `http://localhost:3000/auth/callback` (local dev)
+
+Then in Google Cloud Console → OAuth client → Authorized redirect URIs, add
+`https://<your-project-ref>.supabase.co/auth/v1/callback`. Without this the
+"Continue with Google" button will land on Supabase's error page.
 
 ### 1.3 Custom Domain
 

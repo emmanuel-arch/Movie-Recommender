@@ -9,6 +9,24 @@ export interface Profile {
   avatar_url: string | null;
   plan: 'free' | 'premium';
   country: string | null;
+  /**
+   * Stable cross-subdomain identifier of the form `BIR-XXXXXXXX`. Assigned
+   * automatically on signup by `public.handle_new_user()` and unique across
+   * every BirgenAI property.
+   */
+  birgenai_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchingProfile {
+  id: string;
+  user_id: string;
+  name: string;
+  avatar_key: string;
+  is_kids: boolean;
+  is_default: boolean;
+  pin: string | null;
   created_at: string;
   updated_at: string;
 }

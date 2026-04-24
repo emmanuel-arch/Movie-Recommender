@@ -65,20 +65,33 @@ export default function AuthModal({
     setError(null);
     setSuccess(null);
     setLoading(true);
-    const { error: err } =
-      mode === 'signup'
-        ? await signUp(email, password, displayName || undefined)
-        : await signInWithPassword(email, password);
+    if (mode === 'signup') {
+      const { error: err, needsConfirmation } = await signUp(
+        email,
+        password,
+        displayName || undefined,
+      );
+      setLoading(false);
+      if (err) {
+        setError(err);
+        return;
+      }
+      if (needsConfirmation) {
+        setSuccess('Check your inbox to confirm your email, then sign in.');
+      } else {
+        // Auto-confirm is on — send them through the profile picker flow.
+        window.location.href = '/profiles';
+      }
+      return;
+    }
+
+    const { error: err } = await signInWithPassword(email, password);
     setLoading(false);
     if (err) {
       setError(err);
       return;
     }
-    if (mode === 'signup') {
-      setSuccess('Check your inbox to confirm your email, then sign in.');
-    } else {
-      onClose();
-    }
+    onClose();
   };
 
   return (

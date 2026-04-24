@@ -18,9 +18,18 @@ FREE_TIER_CAP_SECONDS = "72000"
 # Warn the user at 80% so they aren't shocked at the cutoff.
 WARN_THRESHOLD_SECONDS = "57600"
 
-# Secrets (set with `wrangler secret put SUPABASE_SERVICE_KEY`):
-#   SUPABASE_URL           = "https://xxxx.supabase.co"
-#   SUPABASE_SERVICE_KEY   = "eyJ..."  (service_role JWT, server-only)
+# Secrets. NEVER put real values in this file; use `wrangler secret put` so
+# they are encrypted at rest in Cloudflare. For local `wrangler dev`, values
+# are loaded from .dev.vars (git-ignored).
+#
+#   npx wrangler secret put SUPABASE_URL
+#     -> https://<your-project-ref>.supabase.co
+#   npx wrangler secret put SUPABASE_SERVICE_KEY
+#     -> <service_role JWT from Supabase -> Settings -> API>
+#
+# Required env in the Worker runtime:
+#   SUPABASE_URL           string
+#   SUPABASE_SERVICE_KEY   string  (service_role JWT, server-only)
 
 [observability]
 enabled = true
