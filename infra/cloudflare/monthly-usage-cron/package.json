@@ -1,0 +1,17 @@
+{
+  "name": "birgenai-monthly-usage-cron",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nightly Cloudflare cron Worker that rolls up screen time and triggers the paywall banner.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "trigger": "curl -X POST -H \"Authorization: Bearer $SUPABASE_SERVICE_KEY\" https://birgenai-monthly-usage-cron.workers.dev/run",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250321.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.114.0"
+  }
+}

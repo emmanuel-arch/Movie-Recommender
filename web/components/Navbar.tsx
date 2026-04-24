@@ -3,13 +3,19 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Search, Bell, Menu, X, User, LogOut, LogIn } from 'lucide-react';
+import { Search, Bell, Menu, X, User, LogOut, LogIn, Sparkles } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { useScreenTime } from '@/hooks/useScreenTime';
+import AuthModal from '@/components/AuthModal';
 
 interface NavbarProps {
   ratingCount?: number;
 }
 
 export default function Navbar({ ratingCount = 0 }: NavbarProps) {
+  const { user, profile, signOut, configured } = useAuth();
+  const { notifications } = useScreenTime();
+  const [authModal, setAuthModal] = useState<'signin' | 'signup' | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -148,9 +154,9 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
               <button className="text-white hover:text-white/70 transition-colors">
                 <Bell className="w-5 h-5" />
               </button>
-              {ratingCount > 0 && (
+              {(notifications.length > 0 || ratingCount > 0) && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-birgen-red text-white text-[10px] font-bold leading-none px-1">
-                  {ratingCount > 9 ? '9+' : ratingCount}
+                  {notifications.length > 0 ? notifications.length : ratingCount > 9 ? '9+' : ratingCount}
                 </span>
               )}
             </div>
@@ -173,15 +179,21 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
               </button>
 
               {profileOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-birgen-black/95 border border-birgen-border rounded-sm shadow-2xl overflow-hidden z-50 animate-fade-in backdrop-blur-sm">
+                <div className="absolute right-0 top-full mt-2 w-60 bg-birgen-black/95 border border-birgen-border rounded-sm shadow-2xl overflow-hidden z-50 animate-fade-in backdrop-blur-sm">
                   <div className="px-4 py-3 border-b border-birgen-border">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-sm bg-birgen-red flex items-center justify-center">
                         <User className="w-4 h-4 text-white" />
                       </div>
-                      <div>
-                        <p className="text-white text-sm font-medium">Guest User</p>
-                        <p className="text-birgen-muted text-xs">{ratingCount} movies rated</p>
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-medium truncate">
+                          {profile?.display_name || user?.email || 'Guest User'}
+                        </p>
+                        <p className="text-birgen-muted text-xs">
+                          {user
+                            ? `${profile?.plan === 'premium' ? 'Premium' : 'Free'} · ${ratingCount} rated`
+                            : `${ratingCount} movies rated · guest`}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -198,21 +210,56 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors"
                     >
-                      Account
+                      Rate Movies
                     </Link>
-                    <button className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors">
-                      Help Center
-                    </button>
+                    {profile?.plan !== 'premium' && (
+                      <Link
+                        href="/upgrade"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-red hover:bg-birgen-red/10 transition-colors font-semibold"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Go Premium
+                      </Link>
+                    )}
                   </div>
                   <div className="border-t border-birgen-border py-1">
-                    <button className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors">
-                      <LogIn className="w-4 h-4" />
-                      Sign In
-                    </button>
-                    <button className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors">
-                      <LogOut className="w-4 h-4" />
-                      Sign out of BirgenAI
-                    </button>
+                    {user ? (
+                      <button
+                        onClick={async () => {
+                          await signOut();
+                          setProfileOpen(false);
+                        }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Sign out of BirgenAI
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          disabled={!configured}
+                          onClick={() => {
+                            setAuthModal('signin');
+                            setProfileOpen(false);
+                          }}
+                          className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                        >
+                          <LogIn className="w-4 h-4" />
+                          Sign In
+                        </button>
+                        <button
+                          disabled={!configured}
+                          onClick={() => {
+                            setAuthModal('signup');
+                            setProfileOpen(false);
+                          }}
+                          className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-birgen-red/10 transition-colors disabled:opacity-50"
+                        >
+                          Create account
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -228,6 +275,15 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
           </div>
         </div>
       </div>
+
+      {/* Auth modal */}
+      {authModal && (
+        <AuthModal
+          defaultMode={authModal}
+          onClose={() => setAuthModal(null)}
+          onContinueGuest={() => setAuthModal(null)}
+        />
+      )}
 
       {/* Mobile Menu */}
       {menuOpen && (

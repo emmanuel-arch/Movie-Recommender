@@ -1,0 +1,30 @@
+#:schema node_modules/wrangler/config-schema.json
+# BirgenAI API Edge Cache — Cloudflare Worker
+# Sits in front of Cloud Run at birgenai.com/api/* and eliminates 429s.
+
+name = "birgenai-api-cache"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Route this Worker under birgenai.com/api/*
+# (You can also set this in the Cloudflare dashboard under the Worker's Routes.)
+# [[routes]]
+# pattern = "birgenai.com/api/*"
+# zone_name = "birgenai.com"
+
+[vars]
+ORIGIN_URL = "https://birgenai-api-529186868469.us-central1.run.app"
+# Comma-separated list of allowed origins for CORS.
+ALLOWED_ORIGINS = "https://birgenai.com,https://movies.birgenai.com,http://localhost:3000"
+
+# Cache TTLs (seconds). Override per deployment if needed.
+[vars.CACHE_TTL]
+POPULAR  = "300"   # /movies/popular — 5 min
+SEARCH   = "30"    # /movies/search  — 30 s
+RECOMMEND = "0"    # /recommend      — never cache (user-specific body)
+DEFAULT  = "60"
+
+# Observability — free tier friendly.
+[observability]
+enabled = true

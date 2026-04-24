@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from '@/components/AuthProvider';
 
 export const metadata: Metadata = {
   title: 'BirgenAI Movies - Personalized Picks, Powered by AI',
@@ -41,20 +42,22 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-birgen-black font-body antialiased">
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: '#1A1A1A',
-              color: '#fff',
-              border: '1px solid #2A2A2A',
-            },
-            success: {
-              iconTheme: { primary: '#E50914', secondary: '#fff' },
-            },
-          }}
-        />
-        {children}
+        <AuthProvider>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: '#1A1A1A',
+                color: '#fff',
+                border: '1px solid #2A2A2A',
+              },
+              success: {
+                iconTheme: { primary: '#E50914', secondary: '#fff' },
+              },
+            }}
+          />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

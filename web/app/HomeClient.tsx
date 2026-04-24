@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Sparkles, Star } from 'lucide-react';
 import MovieCarousel from '@/components/MovieCarousel';
+import ContinueWatchingRow from '@/components/ContinueWatchingRow';
 import { getPopularMovies } from '@/lib/api';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
@@ -44,6 +45,7 @@ export default function HomeClient() {
 
   return (
     <div className="pb-8">
+      <ContinueWatchingRow />
       <MovieCarousel title="Trending & Popular" subtitle="Top-rated movies loved by millions" movies={allMovies.slice(0, 30)} {...carouselProps} />
       <MovieCarousel title="Action & Adventure" movies={filterByGenre(allMovies, ['Action']).slice(0, 20)} {...carouselProps} />
       <MovieCarousel title="Comedy" movies={filterByGenre(allMovies, ['Comedy']).slice(0, 20)} {...carouselProps} />

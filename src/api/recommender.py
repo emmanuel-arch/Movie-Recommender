@@ -132,3 +132,21 @@ class Recommender:
         mask = self.movies['title'].str.contains(query, case=False, na=False)
         results = self.movies[mask].head(limit)
         return results[['movieId', 'title', 'genres']].to_dict('records')
+
+    def get_movie_genres_map(self, movie_ids: list[int]) -> dict[int, list[str]]:
+        """Return {movieId: [genre, ...]} for the given movie IDs.
+
+        Used by the Kenyan algorithm bridge to compute a taste vector from
+        a user's MovieLens ratings without hitting the DB.
+        """
+        if not movie_ids:
+            return {}
+        subset = self.movies[self.movies['movieId'].isin(movie_ids)]
+        out: dict[int, list[str]] = {}
+        for _, row in subset.iterrows():
+            raw = row['genres']
+            if not isinstance(raw, str) or not raw:
+                continue
+            genres = [g for g in raw.split('|') if g and g != '(no genres listed)']
+            out[int(row['movieId'])] = genres
+        return out

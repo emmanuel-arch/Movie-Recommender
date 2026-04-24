@@ -16,6 +16,8 @@
  *   https://customer-{code}.cloudflarestream.com/{video-id}/thumbnails/thumbnail.jpg
  */
 
+import { getHlsUrlForMovieId, hasHlsStream } from '@/lib/hls';
+
 const CF_STREAM_DOMAIN = process.env.NEXT_PUBLIC_CF_STREAM_DOMAIN || '';
 
 /**
@@ -44,6 +46,10 @@ const STREAM_MAP: Record<number, string> = {
  * Returns null if the movie hasn't been uploaded to Cloudflare Stream.
  */
 export function getStreamUrl(movieId: number): string | null {
+  // Prefer our own R2-hosted HLS (no per-minute streaming cost).
+  const r2 = getHlsUrlForMovieId(movieId);
+  if (r2) return r2;
+
   const videoId = STREAM_MAP[movieId];
   if (!videoId || !CF_STREAM_DOMAIN) return null;
   return `https://${CF_STREAM_DOMAIN}/${videoId}/manifest/video.m3u8`;
@@ -72,6 +78,7 @@ export function getStreamThumbnail(movieId: number, time = '10s'): string | null
  * Check if a movie has a stream available.
  */
 export function hasStream(movieId: number): boolean {
+  if (hasHlsStream(movieId)) return true;
   return !!STREAM_MAP[movieId] && !!CF_STREAM_DOMAIN;
 }
 

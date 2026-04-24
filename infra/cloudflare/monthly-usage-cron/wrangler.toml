@@ -1,0 +1,26 @@
+#:schema node_modules/wrangler/config-schema.json
+# BirgenAI Monthly Usage Cron — Cloudflare Worker (Scheduled)
+# Runs once a day at 01:00 UTC to roll up watch time and queue paywall
+# notifications for users who crossed the 20-hour free tier cap.
+
+name = "birgenai-monthly-usage-cron"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Daily at 01:00 UTC (04:00 EAT). Change as needed.
+[triggers]
+crons = ["0 1 * * *"]
+
+[vars]
+# Free tier screen-time cap per calendar month (seconds). 20h = 72_000s.
+FREE_TIER_CAP_SECONDS = "72000"
+# Warn the user at 80% so they aren't shocked at the cutoff.
+WARN_THRESHOLD_SECONDS = "57600"
+
+# Secrets (set with `wrangler secret put SUPABASE_SERVICE_KEY`):
+#   SUPABASE_URL           = "https://xxxx.supabase.co"
+#   SUPABASE_SERVICE_KEY   = "eyJ..."  (service_role JWT, server-only)
+
+[observability]
+enabled = true

@@ -18,6 +18,10 @@ import {
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 import { assetUrl } from '@/lib/assets';
+import { getSlugForMovieId, getKenyanPosterUrl } from '@/lib/hls';
+import VideoPlayer from '@/components/VideoPlayer';
+import AuthModal from '@/components/AuthModal';
+import { useAuth } from '@/components/AuthProvider';
 
 /* ────────────────────────────────────────────────────────
    5 Featured movies — rotating hero with background video
@@ -442,6 +446,9 @@ export default function HeroBanner() {
   const [playerStreamMode, setPlayerStreamMode] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [muted, setMuted] = useState(true);
+  const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [pendingPlay, setPendingPlay] = useState<{ idx: number; stream: boolean } | null>(null);
+  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const timerRef = useRef<NodeJS.Timeout>();
   const backdropTimerRef = useRef<NodeJS.Timeout>();
@@ -472,9 +479,32 @@ export default function HeroBanner() {
   };
 
   const handlePlay = (idx?: number, stream?: boolean) => {
-    setPlayerStartIdx(idx ?? activeIdx);
-    setPlayerStreamMode(stream ?? false);
+    const resolvedIdx = idx ?? activeIdx;
+    const resolvedStream = stream ?? false;
+    // Full-movie playback requires auth (or explicit guest opt-in).
+    if (resolvedStream && !user) {
+      setPendingPlay({ idx: resolvedIdx, stream: resolvedStream });
+      setAuthGateOpen(true);
+      return;
+    }
+    setPlayerStartIdx(resolvedIdx);
+    setPlayerStreamMode(resolvedStream);
     setShowPlayer(true);
+  };
+
+  const handleAuthGateClose = () => {
+    setAuthGateOpen(false);
+    setPendingPlay(null);
+  };
+
+  const handleAuthGateGuest = () => {
+    setAuthGateOpen(false);
+    if (pendingPlay) {
+      setPlayerStartIdx(pendingPlay.idx);
+      setPlayerStreamMode(pendingPlay.stream);
+      setShowPlayer(true);
+      setPendingPlay(null);
+    }
   };
 
   const handleClosePlayer = () => {
@@ -611,12 +641,47 @@ export default function HeroBanner() {
       </div>
 
       {/* ── Fullscreen Player ── */}
-      {showPlayer && (
+      {showPlayer && !playerStreamMode && (
         <FullscreenPlayer
           movies={FEATURED_MOVIES}
           startIndex={playerStartIdx}
           onClose={handleClosePlayer}
-          streamMode={playerStreamMode}
+          streamMode={false}
+        />
+      )}
+
+      {showPlayer && playerStreamMode && (() => {
+        const m = FEATURED_MOVIES[playerStartIdx];
+        const src = getStreamUrl(m.movieId) || m.video;
+        const slug = getSlugForMovieId(m.movieId);
+        const poster = (slug && getKenyanPosterUrl(slug)) || m.backdrop;
+        return (
+          <VideoPlayer
+            src={src}
+            fallbackMp4={getStreamMp4Url(m.movieId) || m.video}
+            poster={poster}
+            title={m.title}
+            subtitle={`${m.year} · ${m.maturity} · ${m.duration}`}
+            fullMovie
+            target={slug ? { movieSlug: slug } : { movieId: m.movieId }}
+            onClose={handleClosePlayer}
+            onNext={() => {
+              setPlayerStartIdx((i) => (i + 1) % FEATURED_MOVIES.length);
+            }}
+            onPrev={() => {
+              setPlayerStartIdx((i) => (i - 1 + FEATURED_MOVIES.length) % FEATURED_MOVIES.length);
+            }}
+          />
+        );
+      })()}
+
+      {/* ── Auth gate before full-movie playback ── */}
+      {authGateOpen && (
+        <AuthModal
+          onClose={handleAuthGateClose}
+          onContinueGuest={handleAuthGateGuest}
+          title="You're 1 click away from watching"
+          subtitle={`Sign up to resume ${FEATURED_MOVIES[pendingPlay?.idx ?? activeIdx].title} across devices`}
         />
       )}
 

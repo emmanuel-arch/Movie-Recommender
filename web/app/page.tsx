@@ -3,12 +3,14 @@ import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import HeroBanner from '@/components/HeroBanner';
 import Top5Kenya from '@/components/Top5Kenya';
+import ScreenTimeBanner from '@/components/ScreenTimeBanner';
 import HomeClient from './HomeClient';
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-birgen-black">
       <Navbar />
+      <ScreenTimeBanner />
       <HeroBanner />
       <Top5Kenya />
       <Suspense fallback={null}>

@@ -22,6 +22,8 @@ import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 import { assetUrl } from '@/lib/assets';
 import toast from 'react-hot-toast';
+import AuthModal from '@/components/AuthModal';
+import { useAuth } from '@/components/AuthProvider';
 
 /* ── The 5 featured movies with MovieLens IDs ─────────── */
 interface Top5Movie {
@@ -655,7 +657,9 @@ export default function Top5Kenya() {
     open: boolean;
     startIndex: number;
   }>({ open: false, startIndex: 0 });
+  const [pendingPlayIdx, setPendingPlayIdx] = useState<number | null>(null);
   const hoverTimeout = useRef<NodeJS.Timeout>();
+  const { user } = useAuth();
 
   const handleMouseEnter = (idx: number) => {
     clearTimeout(hoverTimeout.current);
@@ -683,6 +687,12 @@ export default function Top5Kenya() {
 
   const openTrailer = (idx: number) => {
     setInfoMovie(null);
+    const movie = TOP5_MOVIES[idx];
+    // Full-stream playback requires sign-in (or explicit guest opt-in).
+    if (movie && hasStream(movie.movieId) && !user) {
+      setPendingPlayIdx(idx);
+      return;
+    }
     setTrailerPlayer({ open: true, startIndex: idx });
   };
 
@@ -805,6 +815,20 @@ export default function Top5Kenya() {
           onRateMovie={handleRate}
           userRatings={ratings}
           streamMode={hasStream(TOP5_MOVIES[trailerPlayer.startIndex]?.movieId ?? 0)}
+        />
+      )}
+
+      {/* Auth gate before full-movie streaming */}
+      {pendingPlayIdx !== null && (
+        <AuthModal
+          title="You're 1 click away from watching"
+          subtitle={`Sign up to resume ${TOP5_MOVIES[pendingPlayIdx].displayTitle} across devices`}
+          onClose={() => setPendingPlayIdx(null)}
+          onContinueGuest={() => {
+            const idx = pendingPlayIdx;
+            setPendingPlayIdx(null);
+            setTrailerPlayer({ open: true, startIndex: idx });
+          }}
         />
       )}
     </>

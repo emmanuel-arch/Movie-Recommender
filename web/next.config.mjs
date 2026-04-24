@@ -20,6 +20,10 @@ const nextConfig = {
             },
           ]
         : []),
+      // Generic R2 public bucket host (when you haven't wired a custom domain yet).
+      { protocol: 'https', hostname: '*.r2.dev' },
+      // Supabase Storage (for any user-uploaded avatars or Kenyan backdrops).
+      { protocol: 'https', hostname: '*.supabase.co' },
     ],
   },
   // Allow external video sources
