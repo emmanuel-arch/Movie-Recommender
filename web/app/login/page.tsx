@@ -87,7 +87,7 @@ function LoginForm() {
           a rich fallback even without custom art. */}
       <div className="absolute inset-0">
         <Image
-          src="/Images/hero-inception.webp"
+          src="/Images/movies.jpg"
           alt=""
           fill
           priority
@@ -123,9 +123,6 @@ function LoginForm() {
           <h1 className="font-display text-[40px] leading-none text-white tracking-wide mb-2">
             Sign in
           </h1>
-          <p className="text-birgen-silver text-sm mb-7">
-            Use any BirgenAI credential — it unlocks every birgenai.com property.
-          </p>
 
           {!configured && (
             <div className="mb-5 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-xs">

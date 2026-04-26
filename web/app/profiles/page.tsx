@@ -3,7 +3,7 @@
  * /profiles — "Who's watching?" picker (Netflix-style).
  *
  * Flow:
- *   • Unauthenticated → bounce to /login.
+ *   • Unauthenticated → bounce to /welcome.
  *   • Authenticated with 0 watching_profiles → bounce to /profiles/new
  *     (first-time setup).
  *   • Authenticated with ≥1 profiles → show the picker. Clicking a tile
@@ -34,7 +34,7 @@ export default function ProfilesPage() {
     if (loading) return;
     if (!configured) return; // show an informative empty state below
     if (!user) {
-      router.replace('/login');
+      router.replace('/welcome');
       return;
     }
     if (user && watchingProfiles.length === 0) {

@@ -18,7 +18,7 @@ import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import Avatar from '@/components/Avatar';
-import { AVATARS } from '@/lib/avatars';
+import { AVATARS, AVATAR_CATEGORIES, avatarsByCategory } from '@/lib/avatars';
 import { useAuth } from '@/components/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabase/client';
 
@@ -38,7 +38,7 @@ function NewProfileForm() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) router.replace('/login');
+    if (!user) router.replace('/welcome');
   }, [loading, user, router]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -160,28 +160,41 @@ function NewProfileForm() {
               </div>
             </div>
 
-            {/* Avatar picker */}
-            <div className="mt-8">
-              <h2 className="text-[11px] font-medium uppercase tracking-[0.12em] text-birgen-silver mb-3">
+            {/* Avatar picker — grouped by category */}
+            <div className="mt-8 space-y-7">
+              <h2 className="text-[11px] font-medium uppercase tracking-[0.12em] text-birgen-silver">
                 Choose an avatar
               </h2>
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-10 gap-3">
-                {AVATARS.map((a) => (
-                  <button
-                    key={a.key}
-                    type="button"
-                    onClick={() => setAvatarKey(a.key)}
-                    className={`relative rounded-[10px] transition-all ${
-                      avatarKey === a.key
-                        ? 'ring-2 ring-white scale-[1.04]'
-                        : 'ring-0 hover:scale-[1.04]'
-                    }`}
-                    aria-label={`Pick ${a.label} avatar`}
-                  >
-                    <Avatar avatarKey={a.key} size={72} rounded="md" />
-                  </button>
-                ))}
-              </div>
+              {AVATAR_CATEGORIES.map((cat) => {
+                const items = avatarsByCategory()[cat.id];
+                if (items.length === 0) return null;
+                return (
+                  <div key={cat.id}>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 mb-3">
+                      {cat.label}
+                      <span className="ml-2 text-birgen-muted font-normal">{items.length}</span>
+                    </h3>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                      {items.map((a) => (
+                        <button
+                          key={a.key}
+                          type="button"
+                          onClick={() => setAvatarKey(a.key)}
+                          className={`relative rounded-[10px] transition-all ${
+                            avatarKey === a.key
+                              ? 'ring-2 ring-white scale-[1.04]'
+                              : 'ring-0 hover:scale-[1.04]'
+                          }`}
+                          aria-label={`Pick ${a.label} avatar`}
+                          title={a.label}
+                        >
+                          <Avatar avatarKey={a.key} size={72} rounded="md" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex items-center justify-between mt-10">

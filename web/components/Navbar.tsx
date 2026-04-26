@@ -337,9 +337,8 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
                     {user ? (
                       <button
                         onClick={async () => {
-                          await signOut();
                           setProfileOpen(false);
-                          router.push('/');
+                          await signOut();
                         }}
                         className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-silver hover:text-white hover:bg-white/5 transition-colors"
                       >

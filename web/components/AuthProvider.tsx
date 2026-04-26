@@ -19,6 +19,7 @@ import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, supabaseConfigured } from '@/lib/supabase/client';
 import type { Profile, WatchingProfile } from '@/lib/supabase/types';
 import { isValidBirgenaiId, normalizeBirgenaiId } from '@/lib/birgenai';
+import { isPublicForAnonymousPath } from '@/lib/anonPublicPaths';
 
 const ACTIVE_PROFILE_STORAGE_KEY = 'birgenai.activeWatchingProfileId';
 
@@ -121,9 +122,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       setUser(session?.user ?? null);
+      if (event === 'SIGNED_OUT' && typeof window !== 'undefined') {
+        const path = window.location.pathname;
+        if (!isPublicForAnonymousPath(path)) {
+          setTimeout(() => {
+            window.location.replace('/welcome');
+          }, 0);
+        }
+      }
     });
 
     return () => {
@@ -209,8 +218,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback<AuthContextValue['signOut']>(async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
     setActiveWatchingProfile(null);
+    await supabase.auth.signOut();
   }, [supabase, setActiveWatchingProfile]);
 
   // ── Derived values ───────────────────────────────────────────────────────

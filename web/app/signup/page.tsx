@@ -16,14 +16,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Loader2, Eye, EyeOff, Mail, User as UserIcon, Sparkles, ArrowRight, Copy, Check } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Mail, User as UserIcon, ArrowRight, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-
-const BENEFITS = [
-  { title: 'Unlimited streaming', body: 'Kenyan originals + global catalogue, ad-free on Premium.' },
-  { title: 'Watch everywhere', body: 'Phone, tablet, TV, laptop — your progress follows you.' },
-  { title: 'Single BirgenAI ID', body: 'One login for every birgenai.com product, now and forever.' },
-];
+import NairobiClock from '@/components/NairobiClock';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -40,6 +35,12 @@ export default function SignupPage() {
     | { kind: 'check-email'; email: string }
     | { kind: 'created'; birgenaiId: string | null }
   >(null);
+
+  // ?email= from the /welcome CTA
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('email');
+    if (fromUrl) setEmail((prev) => prev || decodeURIComponent(fromUrl).replace(/\+/g, ' '));
+  }, []);
 
   // If already signed in, skip the form.
   useEffect(() => {
@@ -88,63 +89,64 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-birgen-black">
-      {/* Backdrop */}
+      {/* Cinematic backdrop — full-bleed Nairobi skyline cover (matches the
+          /login treatment) so the page never shows bare black edges. */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-birgen-red/20 via-birgen-black to-birgen-black" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(229,9,20,0.12),transparent_60%)]" />
+        <Image
+          src="/Images/Nairobi.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover opacity-55"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-birgen-black/95 via-birgen-black/70 to-birgen-black" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(229,9,20,0.18),transparent_55%)]" />
       </div>
 
-      {/* Top bar */}
-      <header className="relative z-10 px-6 sm:px-10 py-5 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+      {/* Top bar — logo scales: ~h-11 mobile → h-14 tablet → h-16 desktop */}
+      <header className="relative z-10 px-5 sm:px-8 lg:px-12 py-4 sm:py-5 lg:py-6 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2 group">
           <Image
-            src="/Images/birgenaihub.png"
+            src="/Images/logo.png"
             alt="BirgenAI"
-            width={140}
-            height={32}
-            className="h-8 w-auto object-contain"
+            width={240}
+            height={240}
+            className="h-11 sm:h-14 lg:h-16 w-auto object-contain transition-transform group-hover:scale-105"
             priority
           />
         </Link>
         <Link
           href="/login"
-          className="text-sm font-medium text-white/85 hover:text-white transition-colors"
+          className="text-sm sm:text-[15px] font-medium text-white/85 hover:text-white transition-colors"
         >
           Sign in
         </Link>
       </header>
 
-      <main className="relative z-10 px-4 pb-20 pt-4">
-        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1.1fr_1fr] gap-10 lg:gap-16 items-start">
-          {/* Left — pitch */}
-          <section className="pt-8 lg:pt-16">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-birgen-red/40 bg-birgen-red/10 text-birgen-red text-[11px] uppercase tracking-widest mb-5">
-              <Sparkles className="w-3 h-3" /> BirgenAI Hub
-            </span>
-            <h1 className="font-display text-[44px] sm:text-[58px] leading-[0.95] text-white tracking-wide mb-5">
+      <main className="relative z-10 px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20 pt-10 sm:pt-14 lg:pt-20">
+        {/* Invisible container — both columns share the SAME top edge AND the
+            SAME bottom edge via lg:items-stretch. The right form vertically
+            centers itself when the left content is taller. */}
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1.1fr_1fr] gap-8 sm:gap-10 lg:gap-14 lg:items-stretch">
+          {/* Left — pitch + live Nairobi clock */}
+          <section className="flex flex-col">
+            <h1 className="font-display text-[36px] sm:text-[52px] lg:text-[60px] leading-[0.95] text-white tracking-wide mb-4 sm:mb-5">
               Create your BirgenAI account.
-              <span className="block text-birgen-silver text-[22px] sm:text-[26px] mt-3 font-body font-light leading-snug">
+              <span className="block text-birgen-silver text-[18px] sm:text-[22px] lg:text-[24px] mt-3 font-body font-light leading-snug">
                 One ID. Every screen. Every birgenai.com property.
               </span>
             </h1>
-            <ul className="space-y-4 mt-8">
-              {BENEFITS.map((b) => (
-                <li key={b.title} className="flex gap-4">
-                  <div className="mt-1 w-8 h-8 rounded-md bg-birgen-red/15 border border-birgen-red/30 flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-4 h-4 text-birgen-red" />
-                  </div>
-                  <div>
-                    <p className="text-white text-[15px] font-medium">{b.title}</p>
-                    <p className="text-birgen-silver text-sm">{b.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+
+            <div className="mt-5 sm:mt-7 flex-1">
+              <NairobiClock />
+            </div>
           </section>
 
-          {/* Right — form / confirmation */}
-          <section className="w-full max-w-[460px] justify-self-center lg:justify-self-end">
-            <div className="rounded-[14px] bg-black/75 backdrop-blur-md border border-white/5 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] px-8 sm:px-10 py-9">
+          {/* Right — form / confirmation. lg:my-auto centers the card in the
+              stretched column so its visual bottom aligns with the clock card. */}
+          <section className="w-full max-w-[460px] justify-self-center lg:justify-self-end lg:flex lg:flex-col">
+            <div className="rounded-[14px] bg-black/75 backdrop-blur-md border border-white/5 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] px-8 sm:px-10 py-9 lg:my-auto">
               {doneState?.kind === 'check-email' ? (
                 <CheckEmailPanel email={doneState.email} />
               ) : doneState?.kind === 'created' ? (
@@ -155,7 +157,7 @@ export default function SignupPage() {
                     Get started
                   </h2>
                   <p className="text-birgen-silver text-sm mb-6">
-                    Free to join. No credit card required.
+                    We hate paperwork, too. It'll only take a minute.
                   </p>
 
                   {!configured && (
