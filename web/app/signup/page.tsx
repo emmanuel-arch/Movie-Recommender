@@ -265,15 +265,26 @@ function CheckEmailPanel({ email }: { email: string }) {
         <Mail className="w-7 h-7 text-birgen-red" />
       </div>
       <h2 className="font-display text-[30px] text-white tracking-wide mb-2">Check your inbox</h2>
-      <p className="text-birgen-silver text-sm mb-6">
-        We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Tap
-        the link, then come back and sign in — your BirgenAI ID is waiting.
+      <p className="text-birgen-silver text-sm mb-4">
+        The first message is sent by <span className="text-white font-medium">Supabase</span> (not the
+        BirgenAI code yet): look for a <span className="text-white font-medium">confirm your email</span>{' '}
+        link to <span className="text-white font-medium">{email}</span>. After you open it,
+        you&apos;ll be signed in and we&apos;ll send the{' '}
+        <span className="text-white font-medium">6-digit verification code</span> from{' '}
+        <span className="text-white font-medium">auth@birgenai.com</span> on the next screen.
+      </p>
+      <p className="text-birgen-muted text-[11px] leading-relaxed mb-6 p-3 rounded-md bg-white/[0.04] border border-white/10">
+        Nothing after a few minutes? Check Spam/Promotions. If your project uses Supabase&apos;s
+        default mailer, delivery can be delayed or blocked — in Supabase use Authentication → SMTP
+        Settings (custom SMTP), or turn off &quot;Confirm email&quot; for email signups so only the
+        in-app code is required (see <code className="text-birgen-silver">infra/supabase/AUTH_SETUP.md</code>{' '}
+        §3b).
       </p>
       <Link
         href="/login"
         className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-medium rounded-md transition-all"
       >
-        Back to sign in <ArrowRight className="w-4 h-4" />
+        Already confirmed? Sign in <ArrowRight className="w-4 h-4" />
       </Link>
     </div>
   );

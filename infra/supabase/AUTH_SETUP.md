@@ -21,15 +21,33 @@ In **APIs & Services → Credentials → OAuth 2.0 Client IDs → your client**,
 https://<your-project-ref>.supabase.co/auth/v1/callback
 ```
 
-(Optionally also `https://birgenai.com/auth/callback` if you fan out to other apps — Supabase itself only needs the `supabase.co/auth/v1/callback` one.)
+**Do not rely on extra redirect URIs** such as `https://www.movies.birgenai.co.ke/api/auth/callback/google` for this app: “Sign in with Google” uses **`supabase.auth.signInWithOAuth`**, so Google always receives **`redirect_uri=https://<ref>.supabase.co/auth/v1/callback`**. Only that URI participates in the flow. Entries meant for NextAuth (`/api/auth/callback/google`) or other stacks are **ignored** unless you change the architecture.
+
+(Optionally you may still list your own `https://…/auth/callback` elsewhere for non-Supabase OAuth — it does **not** replace the Supabase line above for Google + Supabase.)
 
 Copy the **Client ID** and **Client Secret** from this page. Treat them like passwords.
 
-### 1b. Supabase → Authentication → Providers → Google
+### 1b. Google — “Choose an account to continue to …supabase.co”
+
+Google builds the account chooser from the **`redirect_uri`** you send (and related parameters). In your URL you can see:
+
+- `redirect_uri=https://wqsfuiqaaajrpwgviehl.supabase.co/auth/v1/callback`
+- `app_domain=https://wqsfuiqaaajrpwgviehl.supabase.co`
+
+So the **hostname users see is the Supabase callback host**, not Cloud Run and not `movies.birgenai.co.ke`. Adding `https://www.movies.birgenai.co.ke/...` under **Authorized redirect URIs** does not change that, because **this app never tells Google to redirect there** for Supabase Google login.
+
+**Ways to show your brand instead of `*.supabase.co`:**
+
+1. **Supabase custom auth domain** (Supabase dashboard — paid / plan-dependent): serve auth under something like `https://auth.birgenai.co.ke` so the **Google `redirect_uri`** uses **your** domain. Then Google’s UI can say “continue to” your hostname.
+2. **Google Cloud → Auth Platform → Branding** (or **OAuth consent screen**): set **App name**, logo, and home page. This improves the product name in some places but **may not replace** the “continue to &lt;host&gt;” line when Google decides to show the **redirect target** domain for clarity.
+
+There is no setting in Cloud Run or in your Next.js app that overrides `redirect_uri`; it is defined by **Supabase Auth** until you use a custom Supabase auth URL or a different OAuth stack.
+
+### 1c. Supabase → Authentication → Providers → Google
 
 1. Open `https://supabase.com/dashboard/project/<your-project-ref>/auth/providers`
 2. Expand **Google** → toggle **Enabled**.
-3. Paste the Client ID and Client Secret you copied above.
+3. Paste the Client ID and Client Secret from **§1a** (the same Google Cloud project as **§1b**).
 4. Save.
 
 After this the "Continue with Google" button on `/login` and `/signup` works end-to-end.
@@ -54,6 +72,29 @@ Supabase → **Authentication → URL Configuration**:
   - your Vercel preview pattern, e.g. `https://*.vercel.app/auth/callback`
 
 Without these, confirmation links end up on a bare Supabase URL instead of coming home to the web app.
+
+---
+
+## 3b. “Check your inbox” but no email (signup stuck)
+
+You have **two different emails** in this product:
+
+| When | Who sends it | Purpose |
+|------|----------------|---------|
+| Right after **email/password signup** | **Supabase Auth** (not Zoho) | “Confirm your signup” link — only if **Confirm email** is ON |
+| On **`/auth/otp`** after the user has a session | **Your app** via Zoho (`SMTP_*`) | 6-digit OTP |
+
+The Movies app only calls Zoho **after** the user is logged in. If **Confirm email** is enabled and **Supabase never delivers** that first message (rate limits, spam, or no SMTP configured on the Supabase project), the user will sit on “Check your inbox” with nothing to open.
+
+**Fix (pick one):**
+
+1. **OTP-only flow (recommended if you already use Zoho for codes)**  
+   Supabase dashboard → **Authentication** → **Providers** → **Email** → disable **Confirm email** / “Require email confirmation” (exact label varies by dashboard version).  
+   Then `signUp` returns a **session immediately**, `OtpGate` sends the user to **`/auth/otp`**, and **only** your Zoho SMTP sends mail. One pipeline, fewer surprises.
+
+2. **Keep Supabase confirmation**  
+   Configure **Custom SMTP** under Supabase **Authentication** → **SMTP Settings** (you can use the same Zoho mailbox as in `SMTP_*`, with an app password Supabase is allowed to use).  
+   Then check **Logs → Auth** for send errors, and ask the user to check **Spam** for the sender Supabase uses.
 
 ---
 

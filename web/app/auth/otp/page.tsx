@@ -24,7 +24,7 @@ export default function OtpPage() {
 
   useEffect(() => {
     if (!profile?.otp_verified_at || loading) return;
-    router.replace('/');
+    router.replace('/profiles');
   }, [profile?.otp_verified_at, loading, router]);
 
   const sendCode = async () => {
@@ -73,7 +73,8 @@ export default function OtpPage() {
         return;
       }
       await refreshProfile();
-      router.replace('/auth/entering?next=/');
+      // Watching-profile picker sends first-timers to /profiles/new?initial=1
+      router.replace('/auth/entering?next=/profiles');
     } finally {
       setBusy(false);
     }
