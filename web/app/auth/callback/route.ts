@@ -1,33 +1,51 @@
 /**
  * Supabase OAuth callback.
  *
- * Supabase redirects here with a `?code=...` after Google/Apple auth. We
- * exchange it for a session (sets the auth cookies) and then route the user
- * to the profile picker so they can pick / create their watching profile.
- *
- * If the exchange fails, we send them back to /login with an error flag.
+ * Exchanges `?code=` for a session and MUST attach Set-Cookie headers to the
+ * redirect response (otherwise the browser never stores the session — users
+ * appear logged-out and middleware sends them to /welcome).
  */
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
-  const next = url.searchParams.get('next') ?? '/profiles';
+  const nextParam = url.searchParams.get('next') ?? '/auth/otp';
 
   if (!code) {
     return NextResponse.redirect(new URL('/login?error=oauth_missing_code', request.url));
   }
 
-  const supabase = getSupabaseServerClient();
-  if (!supabase) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anon) {
     return NextResponse.redirect(new URL('/login?error=auth_not_configured', request.url));
   }
 
+  const redirectTarget = new URL(nextParam, request.url);
+  let response = NextResponse.redirect(redirectTarget);
+
+  const supabase = createServerClient(supabaseUrl, anon, {
+    cookies: {
+      get(name: string) {
+        return request.cookies.get(name)?.value;
+      },
+      set(name: string, value: string, options: CookieOptions) {
+        response.cookies.set({ name, value, ...options });
+      },
+      remove(name: string, options: CookieOptions) {
+        response.cookies.set({ name, value: '', ...options });
+      },
+    },
+  });
+
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url));
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url),
+    );
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  return response;
 }

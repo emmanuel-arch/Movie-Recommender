@@ -41,7 +41,7 @@ function LoginForm() {
 
   // If we're already authenticated, skip the login form entirely.
   useEffect(() => {
-    if (!loading && user) router.replace('/profiles');
+    if (!loading && user) router.replace('/');
   }, [loading, user, router]);
 
   // Pre-fill error from OAuth callback redirects.
@@ -78,7 +78,7 @@ function LoginForm() {
       setError(err);
       return;
     }
-    router.replace('/profiles');
+    router.replace('/');
   };
 
   return (

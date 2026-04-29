@@ -15,6 +15,8 @@ export interface Profile {
    * every BirgenAI property.
    */
   birgenai_id: string;
+  /** Set after email OTP verification (after migration `03_otp_usermaster.sql`). */
+  otp_verified_at?: string | null;
   created_at: string;
   updated_at: string;
 }

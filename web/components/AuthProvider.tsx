@@ -4,9 +4,8 @@
  *
  * Responsibilities:
  *   1. Subscribe to Supabase auth state changes (sign-in / sign-out / token refresh).
- *   2. Expose { user, profile, watchingProfiles, activeWatchingProfile, loading,
- *       signInWithPassword, signInWithBirgenaiId, signUp, signInWithOAuth,
- *       signOut, refresh } to the whole tree.
+ *   2. Expose auth + `accountReady` (session resolved and profile/watch list
+ *      fetched) so routing can avoid races (e.g. /profiles vs /profiles/new).
  *   3. Lazily load the user's `profiles` row AND their watching-profile list
  *      so the UI can decide between the picker and an auto-route.
  *
@@ -29,6 +28,8 @@ interface AuthContextValue {
   watchingProfiles: WatchingProfile[];
   activeWatchingProfile: WatchingProfile | null;
   loading: boolean;
+  /** True once initial session + profile/watch fetch finished for this user (or guest). */
+  accountReady: boolean;
   configured: boolean;
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithBirgenaiId: (
@@ -58,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [watchingProfiles, setWatchingProfiles] = useState<WatchingProfile[]>([]);
   const [activeWatchingProfileId, _setActiveWatchingProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(configured);
+  const [accountReady, setAccountReady] = useState(!configured);
 
   // ── Persisted active-profile state ───────────────────────────────────────
   useEffect(() => {
@@ -142,9 +144,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   useEffect(() => {
-    refreshProfile();
-    refreshWatchingProfiles();
-  }, [refreshProfile, refreshWatchingProfiles]);
+    if (!configured || !supabase) {
+      setAccountReady(true);
+      return;
+    }
+    if (loading) return;
+
+    let cancelled = false;
+    setAccountReady(false);
+
+    void (async () => {
+      if (!user) {
+        setProfile(null);
+        setWatchingProfiles([]);
+        if (!cancelled) setAccountReady(true);
+        return;
+      }
+      await Promise.all([refreshProfile(), refreshWatchingProfiles()]);
+      if (!cancelled) setAccountReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [configured, supabase, loading, user?.id, refreshProfile, refreshWatchingProfiles]);
 
   // ── Auth actions ─────────────────────────────────────────────────────────
   const signInWithPassword = useCallback<AuthContextValue['signInWithPassword']>(
@@ -181,7 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email, password, displayName) => {
       if (!supabase) return { error: 'Auth is not configured.', needsConfirmation: false };
       const redirect =
-        typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined;
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/auth/otp')}`
+          : undefined;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -202,7 +227,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (provider, redirectTo) => {
       if (!supabase) return;
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const target = redirectTo ?? `${origin}/auth/callback`;
+      const target =
+        redirectTo ??
+        `${origin}/auth/callback?next=${encodeURIComponent('/auth/otp')}`;
       await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -239,6 +266,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       watchingProfiles,
       activeWatchingProfile,
       loading,
+      accountReady,
       configured,
       signInWithPassword,
       signInWithBirgenaiId,
@@ -255,6 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       watchingProfiles,
       activeWatchingProfile,
       loading,
+      accountReady,
       configured,
       signInWithPassword,
       signInWithBirgenaiId,
@@ -280,6 +309,7 @@ export function useAuth(): AuthContextValue {
       watchingProfiles: [],
       activeWatchingProfile: null,
       loading: false,
+      accountReady: true,
       configured: false,
       signInWithPassword: async () => ({ error: 'Not configured' }),
       signInWithBirgenaiId: async () => ({ error: 'Not configured' }),

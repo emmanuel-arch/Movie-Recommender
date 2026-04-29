@@ -15,14 +15,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { Loader2, Eye, EyeOff, Mail, User as UserIcon, ArrowRight, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import NairobiClock from '@/components/NairobiClock';
 
 export default function SignupPage() {
-  const router = useRouter();
-  const { signUp, signInWithOAuth, user, profile, loading, configured, refreshProfile } = useAuth();
+  const { signUp, signInWithOAuth, profile, loading, configured, refreshProfile } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,11 +39,6 @@ export default function SignupPage() {
     const fromUrl = new URLSearchParams(window.location.search).get('email');
     if (fromUrl) setEmail((prev) => prev || decodeURIComponent(fromUrl).replace(/\+/g, ' '));
   }, []);
-
-  // If already signed in, skip the form.
-  useEffect(() => {
-    if (!loading && user && !doneState) router.replace('/profiles');
-  }, [loading, user, router, doneState]);
 
   // When the "created" state fires we want the live BirgenAI ID from the
   // freshly-inserted profile row. Poll once after refreshProfile.
@@ -134,7 +127,7 @@ export default function SignupPage() {
             <h1 className="font-display text-[36px] sm:text-[52px] lg:text-[60px] leading-[0.95] text-white tracking-wide mb-4 sm:mb-5">
               Create your BirgenAI account.
               <span className="block text-birgen-silver text-[18px] sm:text-[22px] lg:text-[24px] mt-3 font-body font-light leading-snug">
-                One ID. Every screen. Every birgenai.com property.
+                One Identity. Every birgenai.com property.
               </span>
             </h1>
 
@@ -167,15 +160,6 @@ export default function SignupPage() {
                   )}
 
                   <form onSubmit={handleSubmit} className="space-y-3" noValidate>
-                    <Field
-                      label="Display name"
-                      type="text"
-                      autoComplete="name"
-                      placeholder="e.g. Faith"
-                      value={displayName}
-                      onChange={setDisplayName}
-                      icon={<UserIcon className="w-4 h-4" />}
-                    />
                     <Field
                       label="Email"
                       type="email"
@@ -335,10 +319,10 @@ function CreatedPanel({ birgenaiId }: { birgenaiId: string | null }) {
       </div>
 
       <Link
-        href="/profiles/new"
+        href="/auth/otp"
         className="inline-flex items-center justify-center gap-2 w-full py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold text-[15px] rounded-md transition-all"
       >
-        Create your first profile <ArrowRight className="w-4 h-4" />
+        Verify email &amp; continue <ArrowRight className="w-4 h-4" />
       </Link>
     </div>
   );

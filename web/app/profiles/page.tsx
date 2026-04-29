@@ -25,22 +25,22 @@ export default function ProfilesPage() {
     user,
     watchingProfiles,
     loading,
+    accountReady,
     configured,
     setActiveWatchingProfile,
   } = useAuth();
   const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
-    if (loading) return;
-    if (!configured) return; // show an informative empty state below
+    if (loading || !configured || !accountReady) return;
     if (!user) {
       router.replace('/welcome');
       return;
     }
-    if (user && watchingProfiles.length === 0) {
+    if (watchingProfiles.length === 0) {
       router.replace('/profiles/new?initial=1');
     }
-  }, [loading, user, watchingProfiles, router, configured]);
+  }, [loading, configured, accountReady, user, watchingProfiles, router]);
 
   const pick = (id: string) => {
     if (editMode) {
@@ -73,7 +73,7 @@ export default function ProfilesPage() {
           Who's watching?
         </h1>
 
-        {watchingProfiles.length === 0 && !loading ? (
+        {watchingProfiles.length === 0 && accountReady && !loading ? (
           <div className="text-center">
             <p className="text-birgen-silver mb-6">No profiles yet.</p>
             <Link

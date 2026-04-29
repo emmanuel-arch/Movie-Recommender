@@ -16,7 +16,7 @@ import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, ChevronLeft, Loader2 } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { AVATARS, AVATAR_CATEGORIES, avatarsByCategory } from '@/lib/avatars';
 import { useAuth } from '@/components/AuthProvider';
@@ -87,8 +87,19 @@ function NewProfileForm() {
 
   return (
     <div className="min-h-screen bg-birgen-black flex flex-col">
-      <header className="px-6 sm:px-10 py-6">
-        <Link href="/">
+      <header className="grid grid-cols-[1fr_auto_1fr] items-center px-6 sm:px-10 py-6 gap-4">
+        <div className="justify-self-start">
+          {!isInitial ? (
+            <Link
+              href="/profiles"
+              className="inline-flex items-center gap-1.5 text-sm text-birgen-silver hover:text-white transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" aria-hidden />
+              Back to profiles
+            </Link>
+          ) : null}
+        </div>
+        <Link href="/" className="justify-self-center">
           <Image
             src="/Images/birgenaihub.png"
             alt="BirgenAI"
@@ -98,6 +109,7 @@ function NewProfileForm() {
             priority
           />
         </Link>
+        <div aria-hidden className="justify-self-end w-[140px]" />
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 py-10">

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/components/AuthProvider';
+import OtpGate from '@/components/OtpGate';
 
 export const metadata: Metadata = {
   title: 'BirgenAI Movies - Personalized Picks, Powered by AI',
@@ -43,6 +44,7 @@ export default function RootLayout({
       </head>
       <body className="bg-birgen-black font-body antialiased">
         <AuthProvider>
+          <OtpGate>
           <Toaster
             position="top-right"
             toastOptions={{
@@ -57,6 +59,7 @@ export default function RootLayout({
             }}
           />
           {children}
+          </OtpGate>
         </AuthProvider>
       </body>
     </html>
