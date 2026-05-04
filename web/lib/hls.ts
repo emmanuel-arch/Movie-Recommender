@@ -9,6 +9,8 @@
  */
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? '').replace(/\/$/, '');
+/** e.g. `Videos` (default) or `Videos/films` to match your R2 layout. */
+const HLS_ROOT = (process.env.NEXT_PUBLIC_HLS_ROOT ?? 'Videos').replace(/\/$/, '');
 
 /**
  * MovieLens ID → Kenyan catalogue slug, for the featured 5 titles.
@@ -25,12 +27,12 @@ export const KENYAN_HLS_MAP: Record<number, string> = {
 
 export function getKenyanHlsUrl(slug: string): string | null {
   if (!R2_BASE || !slug) return null;
-  return `${R2_BASE}/Videos/${slug}/master.m3u8`;
+  return `${R2_BASE}/${HLS_ROOT}/${slug}/master.m3u8`;
 }
 
 export function getKenyanPosterUrl(slug: string): string | null {
   if (!R2_BASE || !slug) return null;
-  return `${R2_BASE}/Videos/${slug}/poster.jpg`;
+  return `${R2_BASE}/${HLS_ROOT}/${slug}/poster.jpg`;
 }
 
 export function getHlsUrlForMovieId(movieId: number): string | null {

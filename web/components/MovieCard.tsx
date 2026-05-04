@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Star, Play, Plus, Check, ThumbsUp, X, ArrowLeft, Pause, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { Movie } from '@/types';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
@@ -55,6 +56,14 @@ export default function MovieCard({
             hovered ? 'scale-105 z-20 shadow-2xl shadow-black/80 ring-1 ring-white/10' : 'z-10'
           }`}
         >
+          {movie.slug ? (
+            <Link
+              href={`/movie/${movie.slug}`}
+              className="absolute inset-0 z-[1]"
+              aria-label={`${displayTitle} — view details`}
+              prefetch={false}
+            />
+          ) : null}
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -73,11 +82,17 @@ export default function MovieCard({
           )}
 
           {/* Bottom gradient */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none z-[2]" />
+
+          {movie.comingSoon && (
+            <div className="absolute top-1.5 left-1.5 z-[11] px-1.5 py-0.5 rounded bg-black/70 border border-white/15 text-[9px] font-bold uppercase tracking-wider text-white/95">
+              Soon
+            </div>
+          )}
 
           {/* Rating badge — top right */}
           {rated && (
-            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-2 py-0.5 rounded bg-birgen-red/90 shadow-md z-10">
+            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-2 py-0.5 rounded bg-birgen-red/90 shadow-md z-[11]">
               <Star className="w-2.5 h-2.5 fill-white text-white" />
               <span className="text-[10px] font-bold text-white">{userRating}/5</span>
             </div>
@@ -85,7 +100,7 @@ export default function MovieCard({
 
           {/* Predicted rating badge */}
           {movie.predicted_rating && !rated && (
-            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-2 py-0.5 rounded bg-black/70 backdrop-blur-sm z-10">
+            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-2 py-0.5 rounded bg-black/70 backdrop-blur-sm z-[11]">
               <Star className="w-2.5 h-2.5 fill-birgen-red text-birgen-red" />
               <span className="text-[10px] font-medium text-white">{movie.predicted_rating}</span>
             </div>
@@ -93,14 +108,14 @@ export default function MovieCard({
 
           {/* My List badge */}
           {inMyList && !rated && (
-            <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 px-2 py-0.5 rounded bg-white/20 backdrop-blur-sm z-10">
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 px-2 py-0.5 rounded bg-white/20 backdrop-blur-sm z-[11]">
               <Check className="w-2.5 h-2.5 text-white" />
               <span className="text-[10px] font-medium text-white">Listed</span>
             </div>
           )}
 
           {/* Bottom info */}
-          <div className="absolute bottom-1.5 left-2 right-2">
+          <div className="absolute bottom-1.5 left-2 right-2 z-[3] pointer-events-none">
             <p className="text-white text-xs sm:text-sm font-medium leading-tight drop-shadow-lg line-clamp-1">
               {displayTitle}
             </p>
@@ -116,7 +131,7 @@ export default function MovieCard({
 
           {/* Hover action buttons overlay */}
           <div
-            className={`absolute inset-0 flex items-center justify-center gap-2 transition-opacity duration-200 ${
+            className={`absolute inset-0 flex items-center justify-center gap-2 transition-opacity duration-200 z-20 pointer-events-auto ${
               hovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
           >

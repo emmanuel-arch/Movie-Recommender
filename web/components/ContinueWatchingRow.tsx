@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { Play, RotateCcw, X } from 'lucide-react';
 import { useContinueWatching, type ContinueWatchingItem } from '@/hooks/useWatchSession';
 import { KENYAN_HLS_MAP } from '@/lib/hls';
+import { getCatalogPosterUrlForSlug } from '@/lib/catalog';
 
 interface Props {
   onResume?: (item: ContinueWatchingItem) => void;
@@ -42,7 +43,7 @@ export default function ContinueWatchingRow({ onResume }: Props) {
         className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-12 pb-3 scroll-smooth"
         style={{ scrollbarWidth: 'none' }}
       >
-        {items.slice(0, 10).map((item) => (
+        {items.slice(0, 6).map((item) => (
           <ContinueCard key={cardKey(item)} item={item} onResume={onResume} />
         ))}
       </div>
@@ -62,22 +63,22 @@ function ContinueCard({
   onResume?: (item: ContinueWatchingItem) => void;
 }) {
   const title = item.title ?? (item.movieSlug ? prettify(item.movieSlug) : `Movie ${item.movieId ?? ''}`);
-  const backdrop = item.backdrop;
   const remaining = Math.max(0, Math.round((item.duration - item.position) / 60));
   const slug =
     item.movieSlug ??
     (item.movieId != null ? KENYAN_HLS_MAP[item.movieId] ?? null : null);
-
+  const poster = (slug && getCatalogPosterUrlForSlug(slug)) || null;
+  const imageUrl = poster || item.backdrop || null;
   const Inner = (
     <div className="relative group cursor-pointer">
-      <div className="relative w-[260px] sm:w-[300px] aspect-video rounded-lg overflow-hidden bg-birgen-card border border-birgen-border">
-        {backdrop ? (
+      <div className="relative w-[140px] sm:w-[160px] aspect-[2/3] rounded-lg overflow-hidden bg-birgen-card border border-birgen-border shrink-0">
+        {imageUrl ? (
           <Image
-            src={backdrop}
+            src={imageUrl}
             alt={title}
             fill
             className="object-cover transition-transform duration-500 group-hover:scale-105"
-            sizes="300px"
+            sizes="160px"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-birgen-muted">

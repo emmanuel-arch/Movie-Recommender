@@ -38,6 +38,9 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   if (!user) {
     const pathname = request.nextUrl.pathname;
+    if (pathname.startsWith('/api/')) {
+      return response;
+    }
     if (!isPublicForAnonymousPath(pathname)) {
       const url = request.nextUrl.clone();
       url.pathname = '/welcome';

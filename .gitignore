@@ -33,3 +33,10 @@ data/genome_scores.csv
 data/train.csv
 models/
 submission/
+
+# Local media/transcoding artifacts (do not commit)
+infra/ffmpeg/.wrangler/
+infra/ffmpeg/hls/
+infra/r2/staging/
+infra/r2/.hls-r2-manifest-*.json
+*.tsdownload

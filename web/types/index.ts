@@ -11,6 +11,12 @@ export interface Movie {
   tmdb_id?: number;
   stream_url?: string | null;
   trailer_url?: string | null;
+  /** Birgen catalogue slug → `/movie/[slug]` + `/watch/[slug]` when playable. */
+  slug?: string;
+  playable?: boolean;
+  comingSoon?: boolean;
+  runtimeMinutes?: number;
+  maturity?: string;
 }
 
 export interface RatingInput {

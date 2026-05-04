@@ -1,32 +1,29 @@
 'use client';
-import { useEffect, useState } from 'react';
+
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Sparkles, Star } from 'lucide-react';
 import MovieCarousel from '@/components/MovieCarousel';
 import ContinueWatchingRow from '@/components/ContinueWatchingRow';
-import { getPopularMovies } from '@/lib/api';
+import {
+  CATALOG,
+  isCriticallyAcclaimed,
+  toMovie,
+  similarCatalogEntries,
+  getCatalogEntryBySlug,
+} from '@/lib/catalog';
+import { getRecommendations } from '@/lib/api';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
 import { useMyList } from '@/hooks/useMyList';
 import toast from 'react-hot-toast';
 
-function filterByGenre(movies: Movie[], genres: string[]) {
-  return movies.filter((m) => genres.some((g) => m.genres?.includes(g)));
-}
-
 export default function HomeClient() {
-  const [allMovies, setAllMovies] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { ratings, rateMovie, count } = useRatings();
+  const [recoMovies, setRecoMovies] = useState<Movie[]>([]);
+  const [recoLoading, setRecoLoading] = useState(false);
+  const { ratings, rateMovie, count, ratedMovies, getRatingInputs } = useRatings();
   const { myList, addToList, removeFromList } = useMyList();
   const myListIds = new Set(myList.map((m) => m.movieId));
-
-  useEffect(() => {
-    getPopularMovies(100)
-      .then(setAllMovies)
-      .catch(() => toast.error('Failed to load movies'))
-      .finally(() => setLoading(false));
-  }, []);
 
   const handleRate = (movie: Movie, rating: number) => {
     rateMovie(movie, rating);
@@ -34,7 +31,6 @@ export default function HomeClient() {
   };
 
   const carouselProps = {
-    loading,
     userRatings: ratings,
     onRate: handleRate,
     showRating: true,
@@ -43,15 +39,163 @@ export default function HomeClient() {
     onRemoveFromList: removeFromList,
   };
 
+  useEffect(() => {
+    if (count < 5) {
+      setRecoMovies([]);
+      return;
+    }
+    let cancelled = false;
+    setRecoLoading(true);
+    const inputs = getRatingInputs();
+    getRecommendations(inputs, 16)
+      .then((rows) => {
+        if (cancelled) return;
+        const unrated = rows.filter((m) => !ratings.has(m.movieId));
+        setRecoMovies(unrated.slice(0, 14));
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Could not load recommendations');
+      })
+      .finally(() => {
+        if (!cancelled) setRecoLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [count, getRatingInputs, ratings]);
+
+  const newOnBirgen = useMemo(
+    () =>
+      [...CATALOG]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 12)
+        .map(toMovie),
+    [],
+  );
+
+  const kenyanOriginals = useMemo(
+    () => CATALOG.filter((c) => c.kenyanOriginal).map(toMovie),
+    [],
+  );
+
+  const criticallyAcclaimed = useMemo(
+    () => CATALOG.filter((c) => isCriticallyAcclaimed(c)).map(toMovie),
+    [],
+  );
+
+  const darkPsych = useMemo(
+    () => CATALOG.filter((c) => c.darkPsychological).map(toMovie),
+    [],
+  );
+
+  const africanStories = useMemo(
+    () => CATALOG.filter((c) => c.panAfrican).map(toMovie),
+    [],
+  );
+
+  const becauseSeed = ratedMovies[ratedMovies.length - 1]?.movie;
+  const becauseEntry = becauseSeed
+    ? CATALOG.find((c) => c.movieId === becauseSeed.movieId) ||
+      getCatalogEntryBySlug(becauseSeed.slug ?? '')
+    : undefined;
+  const becauseYouWatched = useMemo(() => {
+    if (!becauseEntry) return [];
+    return similarCatalogEntries(becauseEntry, 8).map(toMovie);
+  }, [becauseEntry]);
+
+  const rateMorePool = useMemo(() => {
+    const unrated = CATALOG.filter((c) => !ratings.has(c.movieId));
+    return [...unrated]
+      .sort((a, b) => b.tmdbVoteAverage - a.tmdbVoteAverage)
+      .slice(0, 14)
+      .map(toMovie);
+  }, [ratings]);
+
+  const comingSoonRow = useMemo(
+    () => CATALOG.filter((c) => c.comingSoon).map(toMovie),
+    [],
+  );
+
+  const watchOnBadge = (
+    <span className="ml-2 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-white/10 text-white/90 border border-white/20">
+      Watch on BirgenAI
+    </span>
+  );
+
   return (
     <div className="pb-8">
       <ContinueWatchingRow />
-      <MovieCarousel title="Trending & Popular" subtitle="Top-rated movies loved by millions" movies={allMovies.slice(0, 30)} {...carouselProps} />
-      <MovieCarousel title="Action & Adventure" movies={filterByGenre(allMovies, ['Action']).slice(0, 20)} {...carouselProps} />
-      <MovieCarousel title="Comedy" movies={filterByGenre(allMovies, ['Comedy']).slice(0, 20)} {...carouselProps} />
-      <MovieCarousel title="Drama" movies={filterByGenre(allMovies, ['Drama']).slice(0, 20)} {...carouselProps} />
-      <MovieCarousel title="Sci-Fi" movies={filterByGenre(allMovies, ['Sci-Fi']).slice(0, 20)} {...carouselProps} />
-      <MovieCarousel title="Horror & Thriller" movies={filterByGenre(allMovies, ['Horror', 'Thriller']).slice(0, 20)} {...carouselProps} />
+
+      {count >= 5 && (
+        <MovieCarousel
+          title="Recommended for you"
+          subtitle="From your taste profile — unlocks after 5+ ratings"
+          movies={recoMovies}
+          loading={recoLoading}
+          badge={watchOnBadge}
+          {...carouselProps}
+        />
+      )}
+
+      <MovieCarousel
+        title="Kenyan originals"
+        subtitle="Our homegrown lane — plus locked originals staging on the platform"
+        movies={kenyanOriginals}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
+        title="Critically acclaimed"
+        subtitle="TMDB-loved titles curated for your mood profile"
+        movies={criticallyAcclaimed}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
+        title="Dark & psychological"
+        subtitle="High stakes, moral grey zones, cinematic shadows"
+        movies={darkPsych}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
+        title="African stories"
+        subtitle="Nollywood · South Africa · East Africa · pan-African voices"
+        movies={africanStories}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
+        title="New on BirgenAI"
+        subtitle="Recently dated on the roadmap — check back as shipments land"
+        movies={newOnBirgen}
+        {...carouselProps}
+      />
+
+      {becauseEntry && becauseYouWatched.length > 0 && (
+        <MovieCarousel
+          title={`Because you watched ${becauseEntry.displayTitle}`}
+          subtitle="Picks stitched from overlapping DNA in your catalogue"
+          movies={becauseYouWatched}
+          {...carouselProps}
+        />
+      )}
+
+      {count < 10 && rateMorePool.length > 0 && (
+        <MovieCarousel
+          title="Rate more, get better picks"
+          subtitle="Quick taps train the algo — no typing required"
+          movies={rateMorePool}
+          {...carouselProps}
+        />
+      )}
+
+      <MovieCarousel
+        title="Coming soon"
+        subtitle="Licensed windows opening — tap a card for notify-me on launch"
+        movies={comingSoonRow}
+        {...carouselProps}
+      />
 
       {count < 5 && (
         <div className="mx-4 sm:mx-6 lg:mx-12 mt-10 mb-4 p-8 rounded-2xl bg-gradient-to-br from-birgen-dark to-birgen-card border border-birgen-border text-center">
@@ -62,14 +206,15 @@ export default function HomeClient() {
             Rate {5 - count} more movie{5 - count !== 1 ? 's' : ''} to unlock your picks
           </h3>
           <p className="text-birgen-muted mb-6 max-w-md mx-auto">
-            BirgenAI needs at least 5 ratings to generate personalized recommendations.
+            BirgenAI needs at least 5 ratings to light up the full recommendation engine — use Train Your AI for
+            the TMDB catalogue, while you watch the Kenyan lane here.
           </p>
           <Link
             href="/onboarding"
             className="inline-flex items-center gap-2 px-6 py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold rounded-lg transition-all hover:scale-105 active:scale-95 red-glow"
           >
             <Sparkles className="w-4 h-4" />
-            Rate Top Movies
+            Train your AI (TMDB picks)
           </Link>
         </div>
       )}
