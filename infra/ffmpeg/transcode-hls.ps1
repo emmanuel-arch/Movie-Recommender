@@ -38,33 +38,41 @@ $null = New-Item -ItemType Directory -Force -Path "$Out/1080p", "$Out/720p", "$O
 
 Write-Host "-> Transcoding 4-bitrate ABR ladder for '$Slug'..." -ForegroundColor Cyan
 
+# All scaling in filter_complex — FFmpeg 6+ errors if -vf is used on a stream
+# already produced by -filter_complex.
+$filterComplex = '[0:v]split=4[v1][v2][v3][v4];' +
+  '[v1]scale=1920:1080:flags=lanczos[v1s];' +
+  '[v2]scale=1280:720:flags=lanczos[v2s];' +
+  '[v3]scale=854:480:flags=lanczos[v3s];' +
+  '[v4]scale=640:360:flags=lanczos[v4s]'
+
 $ffArgs = @(
   '-y', '-i', $Input,
-  '-filter_complex', '[0:v]split=4[v1][v2][v3][v4]',
+  '-filter_complex', $filterComplex,
 
-  '-map', '[v1]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '20', '-preset', 'fast', '-vf', 'scale=1920:1080',
+  '-map', '[v1s]', '-map', '0:a',
+  '-c:v', 'libx264', '-crf', '20', '-preset', 'fast',
   '-b:v', '4500k', '-maxrate', '4800k', '-bufsize', '9000k',
   '-c:a', 'aac', '-b:a', '128k',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/1080p/seg%03d.ts", "$Out/1080p/stream.m3u8",
 
-  '-map', '[v2]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '22', '-preset', 'fast', '-vf', 'scale=1280:720',
+  '-map', '[v2s]', '-map', '0:a',
+  '-c:v', 'libx264', '-crf', '22', '-preset', 'fast',
   '-b:v', '2500k', '-maxrate', '2800k', '-bufsize', '5000k',
   '-c:a', 'aac', '-b:a', '128k',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/720p/seg%03d.ts", "$Out/720p/stream.m3u8",
 
-  '-map', '[v3]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '24', '-preset', 'fast', '-vf', 'scale=854:480',
+  '-map', '[v3s]', '-map', '0:a',
+  '-c:v', 'libx264', '-crf', '24', '-preset', 'fast',
   '-b:v', '1000k', '-maxrate', '1200k', '-bufsize', '2000k',
   '-c:a', 'aac', '-b:a', '96k',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/480p/seg%03d.ts", "$Out/480p/stream.m3u8",
 
-  '-map', '[v4]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '28', '-preset', 'fast', '-vf', 'scale=640:360',
+  '-map', '[v4s]', '-map', '0:a',
+  '-c:v', 'libx264', '-crf', '28', '-preset', 'fast',
   '-b:v', '400k', '-maxrate', '500k', '-bufsize', '1000k',
   '-c:a', 'aac', '-b:a', '64k',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
@@ -109,7 +117,10 @@ if ($Upload) {
       default   { 'application/octet-stream' }
     }
     Write-Host "  $key"
-    & wrangler r2 object put "$R2Bucket/$key" --file=$_.FullName --content-type=$ct | Out-Null
+    & wrangler r2 object put "$R2Bucket/$key" --file=$_.FullName --content-type=$ct --remote
+    if ($LASTEXITCODE -ne 0) {
+      throw "wrangler failed for '$key' (exit $LASTEXITCODE). Create bucket if needed: wrangler r2 bucket create $R2Bucket"
+    }
   }
   Write-Host "OK Uploaded all objects." -ForegroundColor Green
   Write-Host "Master playlist URL (if bucket has public domain):"

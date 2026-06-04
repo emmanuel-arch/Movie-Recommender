@@ -16,7 +16,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSupabaseClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/AuthProvider';
 
 const LS_KEY = 'birgenai_playback';
@@ -70,7 +69,6 @@ export interface WatchSessionController {
 
 export function useWatchSession(target: PlaybackTarget): WatchSessionController {
   const { user } = useAuth();
-  const supabase = getSupabaseClient();
   const key = targetKey(target);
 
   const pending = useRef<LocalRecord | null>(null);
@@ -87,22 +85,22 @@ export function useWatchSession(target: PlaybackTarget): WatchSessionController 
     map[key] = rec;
     writeLocal(map);
 
-    if (user && supabase) {
-      const row = {
-        user_id: user.id,
-        movie_id: target.movieId ?? null,
-        movie_slug: target.movieSlug ?? null,
-        position_seconds: Math.floor(rec.position),
-        duration_seconds: Math.floor(rec.duration) || null,
-        watched_seconds: Math.floor(rec.watchedSeconds),
-        updated_at: new Date().toISOString(),
-      };
-      const conflictTarget = target.movieSlug ? 'user_id,movie_slug' : 'user_id,movie_id';
-      await supabase.from('watch_sessions').upsert(row, { onConflict: conflictTarget });
+    if (user) {
+      await fetch('/api/watch-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          movieId: target.movieId ?? null,
+          movieSlug: target.movieSlug ?? null,
+          positionSeconds: rec.position,
+          durationSeconds: rec.duration || null,
+          watchedSeconds: rec.watchedSeconds,
+        }),
+      }).catch(() => {});
     }
 
     lastSavedRef.current = Date.now();
-  }, [supabase, user, target.movieId, target.movieSlug, key]);
+  }, [user, target.movieId, target.movieSlug, key]);
 
   const tick = useCallback<WatchSessionController['tick']>(
     (position, duration, deltaWatched) => {
@@ -147,32 +145,29 @@ export function useWatchSession(target: PlaybackTarget): WatchSessionController 
       local = 0;
     }
 
-    if (!user || !supabase) return local;
+    if (!user) return local;
 
     try {
-      const q = supabase
-        .from('watch_sessions')
-        .select('position_seconds,duration_seconds,updated_at')
-        .eq('user_id', user.id)
-        .limit(1);
-      const { data } = target.movieSlug
-        ? await q.eq('movie_slug', target.movieSlug).maybeSingle()
-        : await q.eq('movie_id', target.movieId ?? -1).maybeSingle();
+      const params = target.movieSlug
+        ? `movieSlug=${encodeURIComponent(target.movieSlug)}`
+        : `movieId=${target.movieId ?? -1}`;
+      const res = await fetch(`/api/watch-session?${params}`);
+      if (!res.ok) return local;
+      const { row } = await res.json();
+      if (!row) return local;
 
-      if (!data) return local;
-
-      const remote = data.position_seconds ?? 0;
-      const remoteDur = data.duration_seconds ?? 0;
+      const remote = row.position_seconds ?? 0;
+      const remoteDur = row.duration_seconds ?? 0;
       const remoteAdj = remoteDur > 0 && remoteDur - remote < 30 ? 0 : remote;
 
       // Prefer whichever record is newer.
-      const remoteUpdated = new Date(data.updated_at).getTime();
+      const remoteUpdated = new Date(row.updated_at).getTime();
       const localUpdated = localRec?.updatedAt ?? 0;
       return remoteUpdated >= localUpdated ? remoteAdj : local;
     } catch {
       return local;
     }
-  }, [supabase, user, target.movieId, target.movieSlug, key]);
+  }, [user, target.movieId, target.movieSlug, key]);
 
   // Flush on unmount + page unload.
   useEffect(() => {
@@ -229,7 +224,6 @@ export function useContinueWatching(): {
   refresh: () => Promise<void>;
 } {
   const { user } = useAuth();
-  const supabase = getSupabaseClient();
   const [items, setItems] = useState<ContinueWatchingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -240,16 +234,12 @@ export function useContinueWatching(): {
     const local = readLocalContinueWatching();
     let merged: ContinueWatchingItem[] = local;
 
-    if (user && supabase) {
-      const { data } = await supabase
-        .from('continue_watching')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false })
-        .limit(12);
+    if (user) {
+      const res = await fetch('/api/watch-session');
+      const data = res.ok ? ((await res.json()).items as Array<Record<string, unknown>>) : null;
 
       if (data) {
-        const remote = (data as Array<Record<string, unknown>>).map(
+        const remote = data.map(
           (row): ContinueWatchingItem => ({
             movieId: (row.movie_id as number | null) ?? null,
             movieSlug: (row.movie_slug as string | null) ?? null,
@@ -275,7 +265,7 @@ export function useContinueWatching(): {
 
     setItems(merged);
     setLoading(false);
-  }, [supabase, user]);
+  }, [user]);
 
   useEffect(() => {
     void load();

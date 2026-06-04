@@ -78,7 +78,10 @@ function LoginForm() {
       setError(err);
       return;
     }
-    router.replace('/');
+    // Hard navigation (not router.replace) so the freshly-set Supabase auth
+    // cookie is sent on the next request. A soft client navigation races the
+    // cookie write, the middleware sees no session, and bounces to /welcome.
+    window.location.assign('/');
   };
 
   return (

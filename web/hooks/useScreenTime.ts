@@ -14,7 +14,6 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { getSupabaseClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/AuthProvider';
 import type { Notification } from '@/lib/supabase/types';
 
@@ -35,14 +34,8 @@ export interface ScreenTimeState {
   refresh: () => Promise<void>;
 }
 
-function currentMonthISO(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
-}
-
 export function useScreenTime(): ScreenTimeState {
   const { user, profile } = useAuth();
-  const supabase = getSupabaseClient();
 
   const [totalSeconds, setTotalSeconds] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -53,49 +46,37 @@ export function useScreenTime(): ScreenTimeState {
   const warn = DEFAULT_WARN;
 
   const load = useCallback(async () => {
-    if (!user || !supabase) {
+    if (!user) {
       setLoading(false);
       return;
     }
     setLoading(true);
-
-    const month = currentMonthISO();
-    const [{ data: usage }, { data: notif }] = await Promise.all([
-      supabase
-        .from('monthly_usage')
-        .select('total_seconds')
-        .eq('user_id', user.id)
-        .eq('month', month)
-        .maybeSingle(),
-      supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .is('seen_at', null)
-        .order('created_at', { ascending: false })
-        .limit(10),
-    ]);
-
-    setTotalSeconds((usage?.total_seconds as number | undefined) ?? 0);
-    setNotifications((notif as Notification[] | null) ?? []);
-    setLoading(false);
-  }, [user, supabase]);
+    try {
+      const res = await fetch('/api/screen-time');
+      if (res.ok) {
+        const json = await res.json();
+        setTotalSeconds((json.totalSeconds as number) ?? 0);
+        setNotifications((json.notifications as Notification[]) ?? []);
+      }
+    } catch {
+      // leave defaults
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const dismissNotification = useCallback(
-    async (id: string) => {
-      if (!supabase) return;
-      await supabase
-        .from('notifications')
-        .update({ seen_at: new Date().toISOString() })
-        .eq('id', id);
-      setNotifications((xs) => xs.filter((n) => n.id !== id));
-    },
-    [supabase],
-  );
+  const dismissNotification = useCallback(async (id: string) => {
+    await fetch('/api/screen-time', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dismissId: id }),
+    }).catch(() => {});
+    setNotifications((xs) => xs.filter((n) => n.id !== id));
+  }, []);
 
   const percent = cap > 0 ? Math.min(100, (totalSeconds / cap) * 100) : 0;
 

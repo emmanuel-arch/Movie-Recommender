@@ -1,41 +1,78 @@
 'use client';
 /**
- * Root-level auth provider.
+ * Root-level auth provider — NextAuth (Auth.js v5) edition.
  *
- * Responsibilities:
- *   1. Subscribe to Supabase auth state changes (sign-in / sign-out / token refresh).
- *   2. Expose auth + `accountReady` (session resolved and profile/watch list
- *      fetched) so routing can avoid races (e.g. /profiles vs /profiles/new).
- *   3. Lazily load the user's `profiles` row AND their watching-profile list
- *      so the UI can decide between the picker and an auto-route.
+ * Movies authenticates through the SAME NextAuth / Prisma `User` store as
+ * birgenai.com (1.0). That gives us:
+ *   • one shared account across every BirgenAI property, and
+ *   • Google OAuth on a birgenai.com callback (so the Google consent screen
+ *     reads "continue to birgenai.com", not the raw *.supabase.co host).
  *
- * If Supabase isn't configured (no env vars), the provider still renders —
- * it just returns a guest context so every page works as "guest mode".
+ * Identity comes from NextAuth (`useSession`). Per-user *data* still lives in
+ * Supabase (watching_profiles, watch_sessions, …) and is read through
+ * service-role server routes (e.g. /api/profiles) — the browser anon client
+ * has no Supabase `auth.uid()` anymore, so RLS would block direct reads.
+ *
+ * The hook surface (`signInWithPassword`, `profile`, `activeWatchingProfile`,
+ * …) is kept identical to the previous Supabase-Auth provider so existing
+ * consumers keep working unchanged.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
-import { getSupabaseClient, supabaseConfigured } from '@/lib/supabase/client';
-import type { Profile, WatchingProfile } from '@/lib/supabase/types';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  SessionProvider,
+  useSession,
+  signIn as nextAuthSignIn,
+  signOut as nextAuthSignOut,
+} from 'next-auth/react';
+import { supabaseConfigured } from '@/lib/supabase/client';
+import type { WatchingProfile } from '@/lib/supabase/types';
 import { isValidBirgenaiId, normalizeBirgenaiId } from '@/lib/birgenai';
-import { isPublicForAnonymousPath } from '@/lib/anonPublicPaths';
 
 const ACTIVE_PROFILE_STORAGE_KEY = 'birgenai.activeWatchingProfileId';
 
+/** Minimal user shape, kept loosely compatible with the old Supabase user. */
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  name: string | null;
+  image?: string | null;
+  tier?: string;
+  role?: string;
+  birgenAiId?: string | null;
+  /** Back-compat shim for code that read the old Supabase `user_metadata`. */
+  user_metadata: { display_name?: string | null; avatar_url?: string | null };
+}
+
+/** Synthesised from the NextAuth session — mirrors the old `profiles` row. */
+export interface SyntheticProfile {
+  id: string;
+  birgenai_id: string | null;
+  display_name: string | null;
+  plan: string | null;
+  /** Always non-null: NextAuth accounts are email-verified at registration. */
+  otp_verified_at: string | null;
+}
+
 interface AuthContextValue {
-  user: User | null;
-  profile: Profile | null;
+  user: AuthUser | null;
+  profile: SyntheticProfile | null;
   watchingProfiles: WatchingProfile[];
   activeWatchingProfile: WatchingProfile | null;
+  activeWatchingProfileId: string | null;
   loading: boolean;
-  /** True once initial session + profile/watch fetch finished for this user (or guest). */
   accountReady: boolean;
   configured: boolean;
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithBirgenaiId: (
-    birgenaiId: string,
-    password: string,
-  ) => Promise<{ error: string | null }>;
+  signInWithBirgenaiId: (birgenaiId: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
     password: string,
@@ -50,22 +87,57 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const supabase = getSupabaseClient();
+function AuthInner({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession();
+  const isAuthed = status === 'authenticated';
+  const isLoading = status === 'loading';
   const configured = supabaseConfigured();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [watchingProfiles, setWatchingProfiles] = useState<WatchingProfile[]>([]);
   const [activeWatchingProfileId, _setActiveWatchingProfileId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(configured);
-  const [accountReady, setAccountReady] = useState(!configured);
+  const [profilesFetched, setProfilesFetched] = useState(false);
+  const [profilesLoading, setProfilesLoading] = useState(false);
+
+  // ── Mapped user + synthetic profile (no Supabase round-trip) ─────────────
+  const user = useMemo<AuthUser | null>(() => {
+    if (!isAuthed || !session?.user) return null;
+    const s = session.user as {
+      id: string;
+      email?: string | null;
+      name?: string | null;
+      image?: string | null;
+      tier?: string;
+      role?: string;
+      birgenAiId?: string | null;
+    };
+    return {
+      id: s.id,
+      email: s.email ?? null,
+      name: s.name ?? null,
+      image: s.image ?? null,
+      tier: s.tier,
+      role: s.role,
+      birgenAiId: s.birgenAiId ?? null,
+      user_metadata: { display_name: s.name ?? null, avatar_url: s.image ?? null },
+    };
+  }, [isAuthed, session]);
+
+  const profile = useMemo<SyntheticProfile | null>(() => {
+    if (!user) return null;
+    return {
+      id: user.id,
+      birgenai_id: user.birgenAiId ?? null,
+      display_name: user.name,
+      plan: user.tier ?? 'FREE',
+      // Treat every NextAuth account as OTP-verified (email_confirm at signup).
+      otp_verified_at: '1970-01-01T00:00:00.000Z',
+    };
+  }, [user]);
 
   // ── Persisted active-profile state ───────────────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const saved = window.localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
-    _setActiveWatchingProfileId(saved ?? null);
+    _setActiveWatchingProfileId(window.localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY));
   }, []);
 
   const setActiveWatchingProfile = useCallback((id: string | null) => {
@@ -73,7 +145,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') return;
     if (id) {
       window.localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, id);
-      // Cookie mirror so server components / middleware can read it too.
       document.cookie = `birgenai_wp=${encodeURIComponent(id)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
     } else {
       window.localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);
@@ -81,173 +152,110 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // ── Profile row loader ───────────────────────────────────────────────────
-  const refreshProfile = useCallback(async () => {
-    if (!supabase || !user) {
-      setProfile(null);
-      return;
-    }
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
-    setProfile((data as Profile | null) ?? null);
-  }, [supabase, user]);
-
+  // ── Watching-profile loader (service-role server route) ──────────────────
   const refreshWatchingProfiles = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user?.id) {
       setWatchingProfiles([]);
       return;
     }
-    const { data } = await supabase
-      .from('watching_profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: true });
-    setWatchingProfiles((data as WatchingProfile[] | null) ?? []);
-  }, [supabase, user]);
-
-  // ── Auth subscription ────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
-    let active = true;
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
-      setUser(session?.user ?? null);
-      if (event === 'SIGNED_OUT' && typeof window !== 'undefined') {
-        const path = window.location.pathname;
-        if (!isPublicForAnonymousPath(path)) {
-          setTimeout(() => {
-            window.location.replace('/welcome');
-          }, 0);
-        }
+    setProfilesLoading(true);
+    try {
+      const res = await fetch('/api/profiles');
+      if (res.ok) {
+        const json = await res.json();
+        setWatchingProfiles((json.profiles as WatchingProfile[]) ?? []);
       }
-    });
+    } catch {
+      // leave existing list; network hiccup
+    } finally {
+      setProfilesLoading(false);
+      setProfilesFetched(true);
+    }
+  }, [user?.id]);
 
-    return () => {
-      active = false;
-      sub?.subscription.unsubscribe();
-    };
-  }, [supabase]);
+  // `profile` is synthesised from the session, so refreshProfile just re-pulls
+  // the watching-profile list (kept for API compatibility).
+  const refreshProfile = useCallback(async () => {
+    await refreshWatchingProfiles();
+  }, [refreshWatchingProfiles]);
 
   useEffect(() => {
-    if (!configured || !supabase) {
-      setAccountReady(true);
-      return;
+    if (isAuthed && user?.id && !profilesFetched) {
+      void refreshWatchingProfiles();
     }
-    if (loading) return;
-
-    let cancelled = false;
-    setAccountReady(false);
-
-    void (async () => {
-      if (!user) {
-        setProfile(null);
-        setWatchingProfiles([]);
-        if (!cancelled) setAccountReady(true);
-        return;
-      }
-      await Promise.all([refreshProfile(), refreshWatchingProfiles()]);
-      if (!cancelled) setAccountReady(true);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [configured, supabase, loading, user?.id, refreshProfile, refreshWatchingProfiles]);
+    if (!isAuthed && !isLoading) {
+      setWatchingProfiles([]);
+      setProfilesFetched(false);
+    }
+  }, [isAuthed, isLoading, user?.id, profilesFetched, refreshWatchingProfiles]);
 
   // ── Auth actions ─────────────────────────────────────────────────────────
   const signInWithPassword = useCallback<AuthContextValue['signInWithPassword']>(
     async (email, password) => {
-      if (!supabase) return { error: 'Auth is not configured.' };
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return { error: error?.message ?? null };
+      const res = await nextAuthSignIn('credentials', {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+      return { error: res?.error ? 'Incorrect email or password.' : null };
     },
-    [supabase],
+    [],
   );
 
-  // BirgenAI-ID sign-in → resolve email via public RPC, then delegate to
-  // the normal password flow. Fails closed if the ID doesn't exist.
   const signInWithBirgenaiId = useCallback<AuthContextValue['signInWithBirgenaiId']>(
     async (rawId, password) => {
-      if (!supabase) return { error: 'Auth is not configured.' };
       const birgenaiId = normalizeBirgenaiId(rawId);
       if (!isValidBirgenaiId(birgenaiId)) {
         return { error: 'BirgenAI ID must look like BIR-12345678.' };
       }
-      const { data, error: rpcErr } = await supabase.rpc('email_for_birgenai_id', {
-        p_birgenai_id: birgenaiId,
+      const res = await nextAuthSignIn('credentials', {
+        birgenAiId: birgenaiId,
+        password,
+        redirect: false,
       });
-      if (rpcErr) return { error: rpcErr.message };
-      const email = typeof data === 'string' ? data : null;
-      if (!email) return { error: 'No BirgenAI account found for that ID.' };
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return { error: error?.message ?? null };
+      return { error: res?.error ? 'Incorrect BirgenAI ID or password.' : null };
     },
-    [supabase],
+    [],
   );
 
   const signUp = useCallback<AuthContextValue['signUp']>(
     async (email, password, displayName) => {
-      if (!supabase) return { error: 'Auth is not configured.', needsConfirmation: false };
-      const redirect =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/auth/otp')}`
-          : undefined;
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { display_name: displayName },
-          emailRedirectTo: redirect,
-        },
-      });
-      if (error) return { error: error.message, needsConfirmation: false };
-      // If the project has email confirmation ON, `session` is null.
-      const needsConfirmation = !data.session;
-      return { error: null, needsConfirmation };
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, name: displayName }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return { error: body?.message ?? 'Could not create account.', needsConfirmation: false };
+        }
+        // Account is created + email pre-confirmed → sign in immediately so the
+        // session (and BirgenAI ID) is live for the confirmation screen.
+        await nextAuthSignIn('credentials', {
+          email: email.trim().toLowerCase(),
+          password,
+          redirect: false,
+        });
+        return { error: null, needsConfirmation: false };
+      } catch {
+        return { error: 'Network error. Please try again.', needsConfirmation: false };
+      }
     },
-    [supabase],
+    [],
   );
 
   const signInWithOAuth = useCallback<AuthContextValue['signInWithOAuth']>(
     async (provider, redirectTo) => {
-      if (!supabase) return;
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const target =
-        redirectTo ??
-        `${origin}/auth/callback?next=${encodeURIComponent('/auth/otp')}`;
-      await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: target,
-          // Supabase injects the correct scopes per-provider; we just ask for
-          // a refresh token so sessions survive a browser close.
-          queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined,
-        },
-      });
+      await nextAuthSignIn(provider, { callbackUrl: redirectTo ?? '/' });
     },
-    [supabase],
+    [],
   );
 
   const signOut = useCallback<AuthContextValue['signOut']>(async () => {
-    if (!supabase) return;
     setActiveWatchingProfile(null);
-    await supabase.auth.signOut();
-  }, [supabase, setActiveWatchingProfile]);
+    await nextAuthSignOut({ callbackUrl: '/welcome' });
+  }, [setActiveWatchingProfile]);
 
   // ── Derived values ───────────────────────────────────────────────────────
   const activeWatchingProfile = useMemo<WatchingProfile | null>(() => {
@@ -256,8 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const hit = watchingProfiles.find((p) => p.id === activeWatchingProfileId);
       if (hit) return hit;
     }
-    return watchingProfiles.find((p) => p.is_default) ?? null;
+    return watchingProfiles.find((p) => p.is_default) ?? watchingProfiles[0] ?? null;
   }, [watchingProfiles, activeWatchingProfileId]);
+
+  const loading = isLoading || (isAuthed && profilesLoading && !profilesFetched);
+  const accountReady = !loading && (!isAuthed || profilesFetched);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -265,6 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       watchingProfiles,
       activeWatchingProfile,
+      activeWatchingProfileId,
       loading,
       accountReady,
       configured,
@@ -282,6 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       watchingProfiles,
       activeWatchingProfile,
+      activeWatchingProfileId,
       loading,
       accountReady,
       configured,
@@ -299,15 +312,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+export function AuthProvider({ children }: { children: ReactNode }) {
+  return (
+    <SessionProvider>
+      <AuthInner>{children}</AuthInner>
+    </SessionProvider>
+  );
+}
+
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    // Safe guest stub for SSR edges where the provider isn't mounted yet.
     return {
       user: null,
       profile: null,
       watchingProfiles: [],
       activeWatchingProfile: null,
+      activeWatchingProfileId: null,
       loading: false,
       accountReady: true,
       configured: false,

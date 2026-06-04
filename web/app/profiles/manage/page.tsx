@@ -52,7 +52,6 @@ import {
 import Avatar from '@/components/Avatar';
 import { AVATARS, AVATAR_CATEGORIES, avatarsByCategory } from '@/lib/avatars';
 import { useAuth } from '@/components/AuthProvider';
-import { getSupabaseClient } from '@/lib/supabase/client';
 import {
   DEFAULT_PROFILE_PREFS,
   LANGUAGE_OPTIONS,
@@ -270,33 +269,25 @@ function ManageEditor({ profileId }: EditorProps) {
     }
     if (!user) return;
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-
     setSaving(true);
 
-    if (isDefault && !editing.is_default) {
-      await supabase
-        .from('watching_profiles')
-        .update({ is_default: false })
-        .eq('user_id', user.id)
-        .neq('id', editing.id);
-    }
-
-    const { error: dbErr } = await supabase
-      .from('watching_profiles')
-      .update({
+    // The API clears other defaults server-side when is_default flips to true.
+    const res = await fetch(`/api/profiles/${editing.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         name: trimmed,
         avatar_key: avatarKey,
         is_kids: isKids,
         is_default: isDefault,
-      })
-      .eq('id', editing.id);
+      }),
+    });
 
     setSaving(false);
 
-    if (dbErr) {
-      setError(dbErr.message);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body?.error ?? 'Could not save changes.');
       return;
     }
 
@@ -313,18 +304,13 @@ function ManageEditor({ profileId }: EditorProps) {
     }
     if (!window.confirm(`Delete profile "${editing.name}"? This can't be undone.`)) return;
 
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-
     setDeleting(true);
-    const { error: dbErr } = await supabase
-      .from('watching_profiles')
-      .delete()
-      .eq('id', editing.id);
+    const res = await fetch(`/api/profiles/${editing.id}`, { method: 'DELETE' });
     setDeleting(false);
 
-    if (dbErr) {
-      setError(dbErr.message);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body?.error ?? 'Could not delete profile.');
       return;
     }
 
@@ -340,17 +326,16 @@ function ManageEditor({ profileId }: EditorProps) {
       setError('PIN must be exactly 4 digits.');
       return;
     }
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-
     const value = pinDraft.length === 0 ? null : pinDraft;
-    const { error: dbErr } = await supabase
-      .from('watching_profiles')
-      .update({ pin: value })
-      .eq('id', editing.id);
+    const res = await fetch(`/api/profiles/${editing.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: value }),
+    });
 
-    if (dbErr) {
-      setError(dbErr.message);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body?.error ?? 'Could not update PIN.');
       return;
     }
 

@@ -330,10 +330,10 @@ function CreatedPanel({ birgenaiId }: { birgenaiId: string | null }) {
       </div>
 
       <Link
-        href="/auth/otp"
+        href="/profiles"
         className="inline-flex items-center justify-center gap-2 w-full py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold text-[15px] rounded-md transition-all"
       >
-        Verify email &amp; continue <ArrowRight className="w-4 h-4" />
+        Continue <ArrowRight className="w-4 h-4" />
       </Link>
     </div>
   );

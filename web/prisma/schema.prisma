@@ -1,0 +1,848 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  emailVerified       DateTime?
+  name                String?
+  image               String?
+  hashedPassword      String?
+  phone               String?              @unique
+  /// Cross-product BirgenAI ID (BIR-XXXXXXXX); mirrors public.profiles.birgenai_id when using Supabase Auth.
+  birgenAiId          String?              @unique @map("birgenai_id")
+  companyName         String?
+  promoCode           String?
+  promoter            String?
+  role                UserRole             @default(INDIVIDUAL)
+  tier                UserTier             @default(FREE)
+  /// Consumable AI credits (e.g. Riri 2.0 top-ups) purchased via the wallet.
+  aiCredits           Int                  @default(0)
+  organizationId      String?
+  isActive            Boolean              @default(true)
+  subscriptionStatus  SubscriptionStatus   @default(INACTIVE)
+  subscriptionStartAt DateTime?
+  subscriptionEndAt   DateTime?
+  subscriptionId      String?
+  autoRenew           Boolean              @default(true)
+  gracePeriodEndAt    DateTime?
+  isOnFreeTrial       Boolean              @default(false)
+  freeTrialTier       UserTier?
+  freeTrialStartAt    DateTime?
+  freeTrialEndAt      DateTime?
+  hasUsedFreeTrial    Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  accounts            Account[]
+  apiKeys             ApiKey[]
+  chatSessions        ChatSession[]
+  creditScoreReqs     CreditScoreRequest[]
+  dbConnections       DatabaseConnection[]
+  files               File[]
+  promoRedemptions    PromoRedemption[]
+  sessions            Session[]
+  usageHistory        UsageHistory[]
+  organization        Organization?        @relation(fields: [organizationId], references: [id])
+  webhooks            Webhook[]
+  installedApps       UserApp[]
+  wallet              Wallet?
+  paymentIntents      PaymentIntent[]
+  manualClaims        ManualPaymentClaim[]
+  investments         Investment[]
+  withdrawalRequests  WithdrawalRequest[]
+
+  @@map("users")
+}
+
+model Organization {
+  id                  String               @id @default(cuid())
+  name                String
+  domain              String?              @unique
+  tier                UserTier             @default(ENTERPRISE_BASIC)
+  subscriptionId      String?
+  billingEmail        String?
+  contactPhone        String?
+  address             String?
+  isActive            Boolean              @default(true)
+  subscriptionStatus  SubscriptionStatus   @default(INACTIVE)
+  subscriptionStartAt DateTime?
+  subscriptionEndAt   DateTime?
+  autoRenew           Boolean              @default(true)
+  gracePeriodEndAt    DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  dbConnections       DatabaseConnection[]
+  users               User[]
+  webhooks            Webhook[]
+
+  @@map("organizations")
+}
+
+model UsageHistory {
+  id         String     @id @default(cuid())
+  userId     String
+  actionType ActionType
+  endpoint   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  timestamp  DateTime   @default(now())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+  @@index([actionType, timestamp])
+  @@map("usage_history")
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String?
+  title     String?
+  isDemo    Boolean       @default(false)
+  metadata  Json?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+  user      User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  role      MessageRole
+  content   String
+  metadata  Json?
+  timestamp DateTime    @default(now())
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, timestamp])
+  @@map("chat_messages")
+}
+
+model DatabaseConnection {
+  id                String          @id @default(cuid())
+  userId            String?
+  organizationId    String?
+  name              String
+  dbType            String
+  host              String
+  port              Int
+  database          String
+  username          String
+  encryptedPassword String
+  isActive          Boolean         @default(true)
+  lastConnected     DateTime?
+  connectionString  String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  organization      Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queries           DatabaseQuery[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@map("database_connections")
+}
+
+model DatabaseQuery {
+  id            String             @id @default(cuid())
+  connectionId  String
+  naturalQuery  String
+  generatedSQL  String
+  executionTime Int?
+  rowCount      Int?
+  success       Boolean
+  errorMessage  String?
+  createdAt     DateTime           @default(now())
+  connection    DatabaseConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, createdAt])
+  @@map("database_queries")
+}
+
+model CreditScoreRequest {
+  id              String   @id @default(cuid())
+  userId          String
+  customerData    Json
+  score           Int?
+  grade           String?
+  riskLevel       String?
+  recommendation  String?
+  factors         Json?
+  maxLoanAmount   Decimal? @db.Decimal(15, 2)
+  recommendedRate Decimal? @db.Decimal(5, 2)
+  confidence      Decimal? @db.Decimal(3, 2)
+  processingTime  Int?
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([score])
+  @@index([grade])
+  @@map("credit_score_requests")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  keyName    String
+  keyHash    String    @unique
+  lastUsed   DateTime?
+  usageCount Int       @default(0)
+  rateLimit  Int?
+  isActive   Boolean   @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model Webhook {
+  id             String            @id @default(cuid())
+  userId         String?
+  organizationId String?
+  name           String
+  url            String
+  events         String[]
+  secret         String?
+  isActive       Boolean           @default(true)
+  lastTriggered  DateTime?
+  failureCount   Int               @default(0)
+  maxRetries     Int               @default(3)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deliveries     WebhookDelivery[]
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id           String    @id @default(cuid())
+  webhookId    String
+  eventType    String
+  payload      Json
+  responseCode Int?
+  responseBody String?
+  success      Boolean   @default(false)
+  retryCount   Int       @default(0)
+  deliveredAt  DateTime?
+  createdAt    DateTime  @default(now())
+  webhook      Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+model File {
+  id            String    @id @default(cuid())
+  userId        String
+  filename      String
+  originalName  String
+  mimeType      String
+  size          Int
+  path          String
+  isPublic      Boolean   @default(false)
+  downloadCount Int       @default(0)
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("files")
+}
+
+model RateLimit {
+  id           String   @id @default(cuid())
+  userId       String
+  endpoint     String
+  windowStart  DateTime
+  requestCount Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, endpoint, windowStart])
+  @@index([windowStart])
+  @@map("rate_limits")
+}
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     LogLevel
+  message   String
+  metadata  Json?
+  userId    String?
+  endpoint  String?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  @@index([level, timestamp])
+  @@index([userId, timestamp])
+  @@map("system_logs")
+}
+
+model Analytics {
+  id          String   @id @default(cuid())
+  eventType   String
+  eventData   Json
+  userId      String?
+  sessionId   String?
+  pageUrl     String?
+  referrer    String?
+  deviceType  String?
+  browserInfo String?
+  ipAddress   String?
+  country     String?
+  timestamp   DateTime @default(now())
+
+  @@index([eventType, timestamp])
+  @@index([userId, timestamp])
+  @@map("analytics")
+}
+
+model PromoCode {
+  id            String            @id @default(cuid())
+  code          String            @unique
+  assignedStaff String?
+  maxUses       Int               @default(1)
+  usesCount     Int               @default(0)
+  isActive      Boolean           @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @default(now()) 
+  redemptions   PromoRedemption[]
+
+  @@index([assignedStaff])
+  @@map("promo_codes")
+}
+
+model PromoRedemption {
+  id          String    @id @default(cuid())
+  promoCodeId String
+  userId      String?
+  buyerEmail  String?
+  buyerName   String?
+  plan        String?
+  amount      Int?
+  createdAt   DateTime  @default(now())
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id])
+
+  @@index([promoCodeId])
+  @@index([userId])
+  @@map("promo_redemptions")
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  isEncrypted Boolean  @default(false)
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@map("system_config")
+}
+
+model SignupOtpChallenge {
+  email       String   @id
+  codeHash    String   @map("code_hash")
+  expiresAt   DateTime @map("expires_at")
+  attempts    Int      @default(0)
+  verifiedAt  DateTime? @map("verified_at")
+  accountType String   @map("account_type")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("signup_otp_challenges")
+}
+
+enum UserRole {
+  INDIVIDUAL
+  ENTERPRISE
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserTier {
+  FREE
+  INDIVIDUAL
+  PREMIUM
+  ENTERPRISE_BASIC
+  ENTERPRISE_PLUS
+  ENTERPRISE_ADVANCED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  GRACE_PERIOD
+}
+
+enum ActionType {
+  GENERAL_CHAT
+  DATABASE_QUERY
+  MARKET_ANALYSIS
+  FILE_GENERATION
+  CUSTOM_LOGIC
+  CREDIT_SCORING
+  API_WEBHOOK
+  BUSINESS_STRATEGY
+  COMPETITOR_ANALYSIS
+  BUSINESS_PITCH
+  SUBSCRIPTION_PAYMENT
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum LogLevel {
+  ERROR
+  WARN
+  INFO
+  DEBUG
+}
+
+model App {
+  id              String      @id @default(cuid())
+  slug            String      @unique
+  name            String
+  tagline         String?
+  description     String
+  developer       String      @default("BirgenAI")
+  category        AppCategory
+  icon            String
+  screenshots     String[]
+  appUrl          String
+  isNative        Boolean     @default(false)
+  launchMode      LaunchMode  @default(NEW_TAB)
+  backgroundColor String?
+  price           Decimal     @default(0) @db.Decimal(10, 2)
+  rating          Decimal     @default(0) @db.Decimal(2, 1)
+  downloads       Int         @default(0)
+  sortOrder       Int         @default(0)
+  isActive        Boolean     @default(true)
+  isFeatured      Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  users           UserApp[]
+
+  @@index([category])
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([slug])
+  @@map("apps")
+}
+
+model UserApp {
+  id        String    @id @default(cuid())
+  userId    String
+  appId     String
+  status    AppStatus @default(INSTALLED)
+  sortOrder Int       @default(0)
+  pinned    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app       App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, appId])
+  @@index([userId])
+  @@index([appId])
+  @@map("user_apps")
+}
+
+enum AppCategory {
+  BIRGENAI_SUITE
+  JOBS
+  EVENTS
+  SCHOLARSHIPS
+  GOVERNMENT
+  BANKING
+  LEARNING
+  NEWS
+  SHOPPING
+  TRANSPORT
+}
+
+enum LaunchMode {
+  EMBEDDED
+  NEW_TAB
+}
+
+enum AppStatus {
+  INSTALLED
+  REMOVED
+  UPDATED
+}
+
+// ── Wallet & Payments (inbuilt M-Pesa) ───────────────────────────────────────
+// The wallet holds prepaid, KES-denominated in-app credit. Money paid to the
+// BirgenAI Till settles into BirgenAI's own Safaricom account, so `balance` is a
+// liability ledger we track here — not withdrawable cash. Spendable credit lives
+// in Wallet.balance; locked savings live per SavingsGoal.savedKes.
+
+model Wallet {
+  id           String              @id @default(cuid())
+  userId       String              @unique
+  balance      Decimal             @default(0) @db.Decimal(12, 2)
+  currency     String              @default("KES")
+  status       WalletStatus        @default(ACTIVE)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+  savingsGoals SavingsGoal[]
+  investments  Investment[]
+  withdrawals  WithdrawalRequest[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id              String             @id @default(cuid())
+  walletId        String
+  direction       WalletTxnDirection
+  type            WalletTxnType
+  status          WalletTxnStatus    @default(COMPLETED)
+  amount          Decimal            @db.Decimal(12, 2)
+  balanceAfter    Decimal            @db.Decimal(12, 2)
+  description     String?
+  /// Unique M-Pesa receipt — the hard guarantee against double-crediting when
+  /// Safaricom re-delivers a callback or a manual claim duplicates a top-up.
+  mpesaReceipt    String?            @unique
+  paymentIntentId String?
+  productId       String?
+  savingsGoalId   String?
+  metadata        Json?
+  createdAt       DateTime           @default(now())
+  wallet          Wallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  paymentIntent   PaymentIntent?     @relation(fields: [paymentIntentId], references: [id])
+  product         Product?           @relation(fields: [productId], references: [id])
+  savingsGoal     SavingsGoal?       @relation(fields: [savingsGoalId], references: [id])
+
+  @@index([walletId, createdAt])
+  @@map("wallet_transactions")
+}
+
+model PaymentIntent {
+  id                String               @id @default(cuid())
+  userId            String
+  purpose           PaymentPurpose
+  amount            Decimal              @db.Decimal(12, 2)
+  phone             String?
+  productId         String?
+  /// Daraja CheckoutRequestID — the key the callback matches on to tie a
+  /// payment back to this user/intent.
+  checkoutRequestId String?              @unique
+  merchantRequestId String?
+  mpesaReceipt      String?
+  status            PaymentIntentStatus  @default(PENDING)
+  source            PaymentSource        @default(STK)
+  resultCode        String?
+  resultDesc        String?
+  metadata          Json?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product           Product?             @relation(fields: [productId], references: [id])
+  walletTxns        WalletTransaction[]
+  manualClaims      ManualPaymentClaim[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("payment_intents")
+}
+
+model Product {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  name           String
+  description    String?
+  priceKes       Decimal             @db.Decimal(12, 2)
+  kind           ProductKind         @default(GENERIC)
+  /// Consumable credits granted on purchase (e.g. Riri 2.0 top-ups).
+  creditsGranted Int?
+  /// Access duration in days for time-boxed products (e.g. Premium, Suite).
+  durationDays   Int?
+  /// Tier this product upgrades the buyer to, if any.
+  grantsTier     UserTier?
+  icon           String?
+  isActive       Boolean             @default(true)
+  sortOrder      Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  paymentIntents PaymentIntent[]
+  walletTxns     WalletTransaction[]
+
+  @@map("products")
+}
+
+model SavingsGoal {
+  id        String              @id @default(cuid())
+  walletId  String
+  name      String
+  targetKes Decimal             @db.Decimal(12, 2)
+  savedKes  Decimal             @default(0) @db.Decimal(12, 2)
+  icon      String?
+  status    SavingsGoalStatus   @default(ACTIVE)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  wallet    Wallet              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  txns      WalletTransaction[]
+
+  @@index([walletId])
+  @@map("savings_goals")
+}
+
+model ManualPaymentClaim {
+  id                 String            @id @default(cuid())
+  userId             String
+  /// M-Pesa confirmation code the user pasted (e.g. SLJ7XXYYZZ).
+  mpesaCode          String
+  amountClaimed      Decimal?          @db.Decimal(12, 2)
+  phone              String?
+  status             ManualClaimStatus @default(PENDING)
+  verificationMethod String?
+  reviewedBy         String?
+  reviewNote         String?
+  paymentIntentId    String?
+  metadata           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentIntent      PaymentIntent?    @relation(fields: [paymentIntentId], references: [id])
+
+  @@unique([userId, mpesaCode])
+  @@index([status])
+  @@map("manual_payment_claims")
+}
+
+// ── Investments & withdrawals ────────────────────────────────────────────────
+// Users can invest spendable wallet credit into BirgenAI for a fixed monthly ROI
+// (default 10%). The principal is locked in the Investment; ROI is credited to
+// spendable balance every 30 days (idempotent per period via InvestmentPayout).
+// Real cash-out (M-Pesa) is never automatic — every withdrawal reserves spendable
+// balance and goes to an admin approval queue; admin pays out manually via the
+// Till and marks it PAID.
+
+model Investment {
+  id            String             @id @default(cuid())
+  userId        String
+  walletId      String
+  /// Locked principal the user committed.
+  principalKes  Decimal            @db.Decimal(12, 2)
+  /// Monthly ROI in basis points (1000 = 10.00%).
+  monthlyRoiBps Int                @default(1000)
+  status        InvestmentStatus   @default(ACTIVE)
+  /// Sum of ROI already credited to the wallet.
+  totalPaidOut  Decimal            @default(0) @db.Decimal(12, 2)
+  startedAt     DateTime           @default(now())
+  lastPayoutAt  DateTime?
+  nextPayoutAt  DateTime
+  closedAt      DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet        Wallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  payouts       InvestmentPayout[]
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([status])
+  @@map("investments")
+}
+
+model InvestmentPayout {
+  id           String     @id @default(cuid())
+  investmentId String
+  /// 1-based month index since the investment started. Unique per investment so
+  /// re-running accrual can never double-pay a period.
+  periodIndex  Int
+  amountKes    Decimal    @db.Decimal(12, 2)
+  createdAt    DateTime   @default(now())
+  investment   Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@unique([investmentId, periodIndex])
+  @@map("investment_payouts")
+}
+
+model WithdrawalRequest {
+  id            String           @id @default(cuid())
+  userId        String
+  walletId      String
+  amountKes     Decimal          @db.Decimal(12, 2)
+  phone         String
+  source        WithdrawalSource @default(WALLET)
+  status        WithdrawalStatus @default(PENDING)
+  /// The PENDING WalletTransaction that reserved the spendable funds.
+  walletTxnId   String?
+  investmentId  String?
+  savingsGoalId String?
+  adminNote     String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  paidAt        DateTime?
+  /// M-Pesa reference of the manual payout the admin sent from the Till.
+  mpesaRef      String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet        Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("withdrawal_requests")
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  WITHDRAWN
+  CANCELLED
+}
+
+enum WithdrawalSource {
+  WALLET
+  SAVINGS
+  INVESTMENT
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+  CANCELLED
+}
+
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+}
+
+enum WalletTxnDirection {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTxnType {
+  TOPUP
+  PURCHASE
+  SAVINGS_LOCK
+  SAVINGS_RELEASE
+  REVERSAL
+  MANUAL_CREDIT
+  INVESTMENT_LOCK
+  INVESTMENT_PAYOUT
+  INVESTMENT_RELEASE
+  WITHDRAWAL
+}
+
+enum WalletTxnStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PaymentPurpose {
+  WALLET_TOPUP
+  PRODUCT_PURCHASE
+  SUBSCRIPTION
+}
+
+enum PaymentIntentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentSource {
+  STK
+  MANUAL_STK_QUERY
+  MANUAL_TILL
+}
+
+enum ProductKind {
+  SUITE
+  CREDITS
+  BOT
+  PREMIUM
+  GENERIC
+}
+
+enum SavingsGoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ManualClaimStatus {
+  PENDING
+  AUTO_VERIFIED
+  APPROVED
+  REJECTED
+  DUPLICATE
+}

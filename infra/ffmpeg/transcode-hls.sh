@@ -16,7 +16,8 @@
 #     360p/{stream.m3u8,  segNNN.ts}
 #     poster.jpg          # generated from 10s mark
 #
-# If --upload is passed, the folder is pushed into R2 via Wrangler. The bucket
+# If --upload is passed, the folder is pushed into R2 via Wrangler (with --remote
+# so it hits Cloudflare — Wrangler 4 otherwise uses a local R2 simulator). The bucket
 # is read from $R2_BUCKET (default: birgenai-assets).
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -42,22 +43,26 @@ mkdir -p "$OUT"/{1080p,720p,480p,360p}
 
 echo "→ Transcoding 4-bitrate ABR ladder for '$SLUG'..."
 
+# Scale inside filter_complex only — FFmpeg rejects -vf on streams that already
+# come from -filter_complex ("Simple and complex filtering cannot be used together").
+FILTER="[0:v]split=4[v1][v2][v3][v4];[v1]scale=1920:1080:flags=lanczos[v1s];[v2]scale=1280:720:flags=lanczos[v2s];[v3]scale=854:480:flags=lanczos[v3s];[v4]scale=640:360:flags=lanczos[v4s]"
+
 ffmpeg -y -i "$INPUT" \
-  -filter_complex "[0:v]split=4[v1][v2][v3][v4]" \
+  -filter_complex "$FILTER" \
   \
-  -map "[v1]" -map 0:a -c:v libx264 -crf 20 -preset fast -vf "scale=1920:1080" -b:v 4500k -maxrate 4800k -bufsize 9000k -c:a aac -b:a 128k \
+  -map "[v1s]" -map 0:a -c:v libx264 -crf 20 -preset fast -b:v 4500k -maxrate 4800k -bufsize 9000k -c:a aac -b:a 128k \
     -f hls -hls_time 6 -hls_list_size 0 -hls_playlist_type vod \
     -hls_segment_filename "$OUT/1080p/seg%03d.ts" "$OUT/1080p/stream.m3u8" \
   \
-  -map "[v2]" -map 0:a -c:v libx264 -crf 22 -preset fast -vf "scale=1280:720"  -b:v 2500k -maxrate 2800k -bufsize 5000k -c:a aac -b:a 128k \
+  -map "[v2s]" -map 0:a -c:v libx264 -crf 22 -preset fast -b:v 2500k -maxrate 2800k -bufsize 5000k -c:a aac -b:a 128k \
     -f hls -hls_time 6 -hls_list_size 0 -hls_playlist_type vod \
     -hls_segment_filename "$OUT/720p/seg%03d.ts"  "$OUT/720p/stream.m3u8" \
   \
-  -map "[v3]" -map 0:a -c:v libx264 -crf 24 -preset fast -vf "scale=854:480"   -b:v 1000k -maxrate 1200k -bufsize 2000k -c:a aac -b:a 96k  \
+  -map "[v3s]" -map 0:a -c:v libx264 -crf 24 -preset fast -b:v 1000k -maxrate 1200k -bufsize 2000k -c:a aac -b:a 96k  \
     -f hls -hls_time 6 -hls_list_size 0 -hls_playlist_type vod \
     -hls_segment_filename "$OUT/480p/seg%03d.ts"  "$OUT/480p/stream.m3u8" \
   \
-  -map "[v4]" -map 0:a -c:v libx264 -crf 28 -preset fast -vf "scale=640:360"   -b:v 400k  -maxrate 500k  -bufsize 1000k -c:a aac -b:a 64k  \
+  -map "[v4s]" -map 0:a -c:v libx264 -crf 28 -preset fast -b:v 400k  -maxrate 500k  -bufsize 1000k -c:a aac -b:a 64k  \
     -f hls -hls_time 6 -hls_list_size 0 -hls_playlist_type vod \
     -hls_segment_filename "$OUT/360p/seg%03d.ts"  "$OUT/360p/stream.m3u8"
 
@@ -101,7 +106,10 @@ if [[ "$UPLOAD" == "--upload" ]]; then
       *)      CT="application/octet-stream" ;;
     esac
     echo "  $KEY"
-    wrangler r2 object put "$R2_BUCKET/$KEY" --file="$FILE" --content-type="$CT" >/dev/null
+    if ! wrangler r2 object put "$R2_BUCKET/$KEY" --file="$FILE" --content-type="$CT" --remote; then
+      echo "✗ wrangler failed for: $KEY — check bucket exists, R2 API token permissions, and login." >&2
+      exit 1
+    fi
   done < <(find "$OUT" -type f -print0)
 
   echo "✓ Uploaded all objects."

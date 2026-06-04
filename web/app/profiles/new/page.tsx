@@ -20,7 +20,6 @@ import { ArrowRight, ChevronLeft, Loader2 } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { AVATARS, AVATAR_CATEGORIES, avatarsByCategory } from '@/lib/avatars';
 import { useAuth } from '@/components/AuthProvider';
-import { getSupabaseClient } from '@/lib/supabase/client';
 
 function NewProfileForm() {
   const router = useRouter();
@@ -52,34 +51,29 @@ function NewProfileForm() {
     }
     if (!user) return;
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setError('Auth is not configured.');
-      return;
-    }
-
     setSaving(true);
     const shouldBeDefault = watchingProfiles.length === 0;
 
-    const { data, error: dbErr } = await supabase
-      .from('watching_profiles')
-      .insert({
-        user_id: user.id,
+    const res = await fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         name: trimmed,
         avatar_key: avatarKey,
         is_kids: isKids,
         is_default: shouldBeDefault,
-      })
-      .select('*')
-      .single();
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
 
     setSaving(false);
 
-    if (dbErr) {
-      setError(dbErr.message);
+    if (!res.ok) {
+      setError(body?.error ?? 'Could not create profile.');
       return;
     }
 
+    const data = body?.profile;
     await refreshWatchingProfiles();
     if (data) setActiveWatchingProfile(data.id);
     router.replace(isInitial || shouldBeDefault ? '/' : '/profiles');
