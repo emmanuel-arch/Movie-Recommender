@@ -52,8 +52,8 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'A young African-American visits his white girlfriend\'s parents for the weekend, where his simmering uneasiness about their reception of him eventually reaches a boiling point.',
     genres: ['Horror', 'Thriller', 'Mystery'],
-    backdrop: assetUrl('/Images/getout.png'),
-    video: assetUrl('/Videos/hero-getout-2017.mp4'),
+    backdrop: assetUrl('/Images/backdrops/backdrop-get-out-2017.jpg'),
+    video: assetUrl('/Videos/clips/hero-get-out-2017.mp4'),
     tagline: '#1 in Movies Today',
   },
   {
@@ -66,8 +66,8 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'An idealistic FBI agent is enlisted by a government task force to aid in the escalating war against drugs at the border area between the U.S. and Mexico.',
     genres: ['Action', 'Crime', 'Drama'],
-    backdrop: assetUrl('/Images/hero-sicario.jpg'),
-    video: assetUrl('/Videos/hero-sicario-2015.mp4'),
+    backdrop: assetUrl('/Images/backdrops/backdrop-sicario-2015.jpg'),
+    video: assetUrl('/Videos/clips/hero-sicario-2015.mp4'),
     tagline: '#2 Trending in Kenya',
   },
   {
@@ -80,8 +80,8 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
     genres: ['Sci-Fi', 'Action', 'Thriller'],
-    backdrop: assetUrl('/Images/hero-inception.webp'),
-    video: assetUrl('/Videos/hero-inception-2010.mp4'),
+    backdrop: assetUrl('/Images/backdrops/backdrop-inception-2010.jpg'),
+    video: assetUrl('/Videos/clips/hero-inception-2010.mp4'),
     tagline: '#1 Top 10 Movies This Week',
   },
   {
@@ -94,8 +94,8 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.',
     genres: ['Action', 'Crime', 'Drama'],
-    backdrop: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
-    video: assetUrl('/Videos/hero-thedarkknight-2008.mp4'),
+    backdrop: assetUrl('/Images/backdrops/backdrop-the-dark-knight-2008.jpg'),
+    video: assetUrl('/Videos/clips/hero-the-dark-knight-2008.mp4'),
     tagline: '#3 Most Watched Worldwide',
   },
   {
@@ -108,8 +108,8 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     overview:
       'In 1954, a U.S. Marshal investigates the disappearance of a murderer who escaped from a hospital for the criminally insane on a remote island.',
     genres: ['Mystery', 'Thriller'],
-    backdrop: assetUrl('/Images/hero-shutter-island.jpg'),
-    video: assetUrl('/Videos/hero-shutter-island.mp4'),
+    backdrop: assetUrl('/Images/backdrops/backdrop-shutter-island-2010.jpg'),
+    video: assetUrl('/Videos/clips/hero-shutter-island-2010.mp4'),
     tagline: '#5 Top 10 Thrillers',
   },
 ];

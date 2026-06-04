@@ -77,12 +77,20 @@ export default function WatchPage() {
     }
   }, [authLoading, user, guestAllowed]);
 
+  // Some kenyan_movies rows still hold an unsubstituted "<R2_PUBLIC_HOST>"
+  // placeholder — treat any such URL as missing and fall back to the
+  // R2 path computed from NEXT_PUBLIC_R2_PUBLIC_URL + NEXT_PUBLIC_HLS_ROOT.
+  const usable = (u?: string | null) => (u && !u.includes('<') ? u : null);
+
   const src = useMemo(() => {
-    if (movie?.hls_master_url) return movie.hls_master_url;
-    return getKenyanHlsUrl(slug) ?? '';
+    return usable(movie?.hls_master_url) ?? getKenyanHlsUrl(slug) ?? '';
   }, [movie, slug]);
 
-  const poster = movie?.backdrop_url || movie?.thumbnail_url || getKenyanPosterUrl(slug);
+  const poster =
+    usable(movie?.backdrop_url) ||
+    usable(movie?.thumbnail_url) ||
+    getKenyanPosterUrl(slug) ||
+    undefined;
 
   if (loading || authLoading) {
     return (

@@ -148,14 +148,6 @@ export const CATALOG: CatalogEntry[] = [
     director: 'Jordan Peele',
     tagline: '#1 psychological thriller pick',
     createdAt: '2026-01-02T12:00:00.000Z',
-    media: {
-      poster: assetUrl('/Images/getout.png'),
-      backdrop: assetUrl('/Images/getout.png'),
-      hero: assetUrl('/Images/getout.png'),
-      trailer: assetUrl('/Videos/trailer-getout-2017.mp4'),
-      heroClip: assetUrl('/Videos/hero-getout-2017.mp4'),
-      preview: assetUrl('/Videos/previews/preview-get-out-2017.mp4'),
-    },
   }),
   sec('Playable now', {
     movieId: 139644,
@@ -178,14 +170,6 @@ export const CATALOG: CatalogEntry[] = [
     director: 'Denis Villeneuve',
     tagline: 'Edge-of-your-seat tension',
     createdAt: '2026-01-05T12:00:00.000Z',
-    media: {
-      poster: assetUrl('/Images/hero-sicario.jpg'),
-      backdrop: assetUrl('/Images/hero-sicario.jpg'),
-      hero: assetUrl('/Images/hero-sicario.jpg'),
-      trailer: assetUrl('/Videos/trailer-sicario-2015.mp4'),
-      heroClip: assetUrl('/Videos/hero-sicario-2015.mp4'),
-      preview: assetUrl('/Videos/previews/preview-sicario-2015.mp4'),
-    },
   }),
   sec('Playable now', {
     movieId: 79132,
@@ -208,14 +192,6 @@ export const CATALOG: CatalogEntry[] = [
     director: 'Christopher Nolan',
     tagline: 'Mind-bending modern classic',
     createdAt: '2026-01-08T12:00:00.000Z',
-    media: {
-      poster: assetUrl('/Images/hero-inception.webp'),
-      backdrop: assetUrl('/Images/hero-inception.webp'),
-      hero: assetUrl('/Images/hero-inception.webp'),
-      trailer: assetUrl('/Videos/trailer-inception-2010.mp4'),
-      heroClip: assetUrl('/Videos/hero-inception-2010.mp4'),
-      preview: assetUrl('/Videos/previews/preview-inception-2010.mp4'),
-    },
   }),
   sec('Playable now', {
     movieId: 58559,
@@ -238,14 +214,6 @@ export const CATALOG: CatalogEntry[] = [
     director: 'Christopher Nolan',
     tagline: 'The standard for comic-book cinema',
     createdAt: '2026-01-10T12:00:00.000Z',
-    media: {
-      poster: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
-      backdrop: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
-      hero: assetUrl('/Images/hero-the-dark-knight-2008.webp'),
-      trailer: assetUrl('/Videos/trailer-thedarkknight-2008.mp4'),
-      heroClip: assetUrl('/Videos/hero-thedarkknight-2008.mp4'),
-      preview: assetUrl('/Videos/previews/preview-the-dark-knight-2008.mp4'),
-    },
   }),
   sec('Playable now', {
     movieId: 74458,
@@ -268,14 +236,6 @@ export const CATALOG: CatalogEntry[] = [
     director: 'Martin Scorsese',
     tagline: 'Paranoia you can’t shake',
     createdAt: '2026-01-12T12:00:00.000Z',
-    media: {
-      poster: assetUrl('/Images/hero-shutter-island.jpg'),
-      backdrop: assetUrl('/Images/hero-shutter-island.jpg'),
-      hero: assetUrl('/Images/hero-shutter-island.jpg'),
-      trailer: assetUrl('/Videos/trailer-shutter-island.mp4'),
-      heroClip: assetUrl('/Videos/hero-shutter-island.mp4'),
-      preview: assetUrl('/Videos/previews/preview-shutter-island-2010.mp4'),
-    },
   }),
   // ── Kenyan & East African originals / priority ─────────────────
   sec('Kenyan originals', {
