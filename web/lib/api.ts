@@ -100,6 +100,21 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
+/**
+ * Warm the recommender (Cloud Run) container so the first real /recommend or
+ * /movies request after an idle period doesn't pay the cold-start spin-up
+ * (which is the other half of the "rate movies → wait an eternity" lag, next
+ * to /api/enrich). Best-effort and fire-and-forget — short timeout, never
+ * throws, no retries. Pinged from the client on load + on an interval.
+ */
+export async function warmRecommender(): Promise<void> {
+  try {
+    await api.get('/', { timeout: 8000 });
+  } catch {
+    /* ignore — warm-up is best-effort */
+  }
+}
+
 export async function getPopularMovies(n: number = 50): Promise<Movie[]> {
   const data = await apiGet<Movie[]>('/movies/popular', { params: { n } });
   return enrichWithPosters(withYear(data));

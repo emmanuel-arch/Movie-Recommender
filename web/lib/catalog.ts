@@ -91,6 +91,8 @@ export function toMovie(e: CatalogEntry): Movie {
     avg_rating: e.tmdbVoteAverage,
     poster_url: catalogPosterPath(e),
     backdrop_url: catalogBackdropPath(e),
+    // Only the playable launch titles have trailer assets in R2.
+    trailer_url: e.playable ? catalogTrailerPath(e) : null,
     year: String(e.year),
     overview: e.overview,
     slug: e.slug,

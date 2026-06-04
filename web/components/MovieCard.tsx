@@ -1,11 +1,11 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
-import { Star, Play, Plus, Check, ThumbsUp, X, ArrowLeft, Pause, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
+import { Star, Play, Plus, Check, ThumbsUp, X, ArrowLeft, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Film } from 'lucide-react';
 import { Movie } from '@/types';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { announceMediaPlay } from '@/lib/mediaBus';
 
 interface MovieCardProps {
   movie: Movie;
@@ -30,13 +30,14 @@ export default function MovieCard({
   const [hovered, setHovered] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showRatingPopup, setShowRatingPopup] = useState(false);
-  const [showPlayer, setShowPlayer] = useState(false);
+  const [playerMode, setPlayerMode] = useState<'movie' | 'trailer' | null>(null);
   const [ratingHover, setRatingHover] = useState(0);
 
   const genres = movie.genres?.split('|').slice(0, 2) || [];
   const rated = userRating !== undefined && userRating > 0;
   const displayTitle = movie.title.replace(/\s*\(\d{4}\)\s*$/, '');
   const imageUrl = movie.backdrop_url || movie.poster_url;
+  const hasTrailer = !!movie.trailer_url;
 
   const handleRate = (rating: number) => {
     onRate?.(movie, rating);
@@ -50,20 +51,13 @@ export default function MovieCard({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {/* Landscape card */}
+        {/* Landscape card — click opens the info popup */}
         <div
+          onClick={() => setShowInfo(true)}
           className={`relative aspect-[16/10] rounded-md overflow-hidden bg-birgen-card transition-all duration-300 ${
             hovered ? 'scale-105 z-20 shadow-2xl shadow-black/80 ring-1 ring-white/10' : 'z-10'
           }`}
         >
-          {movie.slug ? (
-            <Link
-              href={`/movie/${movie.slug}`}
-              className="absolute inset-0 z-[1]"
-              aria-label={`${displayTitle} — view details`}
-              prefetch={false}
-            />
-          ) : null}
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -129,73 +123,15 @@ export default function MovieCard({
             </div>
           </div>
 
-          {/* Hover action buttons overlay */}
+          {/* Hover play overlay — single white play button opens the popup */}
           <div
-            className={`absolute inset-0 flex items-center justify-center gap-2 transition-opacity duration-200 z-20 pointer-events-auto ${
-              hovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 z-20 pointer-events-none ${
+              hovered ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            {/* Play */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowPlayer(true);
-              }}
-              className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg hover:bg-white/90 transition-transform hover:scale-110"
-              title="Play"
-            >
-              <Play className="w-4 h-4 fill-black text-black ml-0.5" />
-            </button>
-
-            {/* Add to List */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (inMyList) {
-                  onRemoveFromList?.(movie.movieId);
-                } else {
-                  onAddToList?.(movie);
-                }
-              }}
-              className={`w-9 h-9 rounded-full border-2 flex items-center justify-center shadow-lg transition-all hover:scale-110 ${
-                inMyList
-                  ? 'border-white bg-white/20 text-white'
-                  : 'border-white/60 bg-black/40 text-white hover:border-white'
-              }`}
-              title={inMyList ? 'Remove from list' : 'Add to My List'}
-            >
-              {inMyList ? (
-                <Check className="w-4 h-4" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-            </button>
-
-            {/* Rate */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowRatingPopup(true);
-                setHovered(false);
-              }}
-              className="w-9 h-9 rounded-full border-2 border-white/60 bg-black/40 flex items-center justify-center text-white shadow-lg hover:border-white transition-all hover:scale-110"
-              title="Rate"
-            >
-              <ThumbsUp className="w-4 h-4" />
-            </button>
-
-            {/* More Info */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowInfo(true);
-                setHovered(false);
-              }}
-              className="w-9 h-9 rounded-full border-2 border-white/60 bg-black/40 flex items-center justify-center text-white shadow-lg hover:border-white transition-all hover:scale-110"
-              title="More Info"
-            >
-              <span className="text-sm font-bold leading-none">i</span>
-            </button>
+            <div className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
+              <Play className="w-5 h-5 fill-black text-black ml-0.5" />
+            </div>
           </div>
         </div>
       </div>
@@ -296,17 +232,29 @@ export default function MovieCard({
               {movie.overview && (
                 <p className="text-birgen-silver text-sm leading-relaxed mb-4 line-clamp-3">{movie.overview}</p>
               )}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={() => {
                     setShowInfo(false);
-                    setShowPlayer(true);
+                    setPlayerMode('movie');
                   }}
                   className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-white/90 text-black font-bold rounded-md transition-all hover:scale-[1.03] active:scale-95 text-sm"
                 >
                   <Play className="w-4 h-4 fill-black" />
-                  Play
+                  Play Movie
                 </button>
+                {hasTrailer && (
+                  <button
+                    onClick={() => {
+                      setShowInfo(false);
+                      setPlayerMode('trailer');
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-[1.03] active:scale-95 text-sm"
+                  >
+                    <Film className="w-4 h-4" />
+                    Watch Trailer
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     if (inMyList) {
@@ -336,14 +284,15 @@ export default function MovieCard({
         </div>
       )}
 
-      {/* Fullscreen Player — streams movie if available, else "Coming Soon" */}
-      {showPlayer && (
+      {/* Fullscreen Player — trailer asset, or streams movie / "Coming Soon" */}
+      {playerMode && (
         <StreamPlayer
           movie={movie}
           displayTitle={displayTitle}
+          mode={playerMode}
           inMyList={inMyList}
           onAddToList={onAddToList}
-          onClose={() => setShowPlayer(false)}
+          onClose={() => setPlayerMode(null)}
         />
       )}
     </>
@@ -364,12 +313,15 @@ function fmtTime(s: number) {
 function StreamPlayer({
   movie,
   displayTitle,
+  mode,
   inMyList,
   onAddToList,
   onClose,
 }: {
   movie: Movie;
   displayTitle: string;
+  /** 'trailer' plays the short trailer asset; 'movie' plays the full stream. */
+  mode: 'movie' | 'trailer';
   inMyList: boolean;
   onAddToList?: (movie: Movie) => void;
   onClose: () => void;
@@ -378,8 +330,13 @@ function StreamPlayer({
   const controlsTimer = useRef<NodeJS.Timeout>();
   const { getPosition, savePosition } = usePlaybackProgress();
 
-  const streamAvailable = hasStream(movie.movieId) || !!movie.stream_url;
-  const videoSrc = movie.stream_url || getStreamUrl(movie.movieId) || getStreamMp4Url(movie.movieId);
+  const isTrailer = mode === 'trailer';
+  const streamAvailable = isTrailer
+    ? !!movie.trailer_url
+    : hasStream(movie.movieId) || !!movie.stream_url;
+  const videoSrc = isTrailer
+    ? movie.trailer_url || null
+    : movie.stream_url || getStreamUrl(movie.movieId) || getStreamMp4Url(movie.movieId);
 
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -411,17 +368,17 @@ function StreamPlayer({
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  // Restore saved position when video loads
+  // Restore saved position when video loads (full movie only — never trailers)
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || isTrailer) return;
     const handleLoaded = () => {
       const saved = getPosition(movie.movieId);
       if (saved > 0) v.currentTime = saved;
     };
     v.addEventListener('loadedmetadata', handleLoaded);
     return () => v.removeEventListener('loadedmetadata', handleLoaded);
-  }, [movie.movieId, getPosition]);
+  }, [movie.movieId, getPosition, isTrailer]);
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -452,8 +409,8 @@ function StreamPlayer({
     setProgress((v.currentTime / v.duration) * 100);
     setCurrentTime(v.currentTime);
     setDuration(v.duration);
-    // Save progress every ~5s worth of updates
-    if (Math.floor(v.currentTime) % 5 === 0) {
+    // Save progress every ~5s worth of updates (full movie only — not trailers)
+    if (!isTrailer && Math.floor(v.currentTime) % 5 === 0) {
       savePosition(movie.movieId, v.currentTime, v.duration);
     }
   };
@@ -516,6 +473,7 @@ function StreamPlayer({
         muted={muted}
         playsInline
         onTimeUpdate={onTimeUpdate}
+        onPlay={announceMediaPlay}
         onEnded={onClose}
       >
         {/* Try HLS first, then MP4 fallback */}
@@ -532,7 +490,13 @@ function StreamPlayer({
           <button onClick={onClose} className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors">
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h3 className="text-white font-semibold text-base sm:text-lg truncate">{displayTitle}</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-white font-semibold text-base sm:text-lg truncate">{displayTitle}</h3>
+            <p className="text-white/50 text-xs flex items-center gap-1.5 mt-0.5">
+              {!isTrailer && <Film className="w-3 h-3 text-birgen-red" />}
+              {isTrailer ? 'Trailer' : 'Full Movie'}
+            </p>
+          </div>
         </div>
 
         {/* Center: tap to play/pause */}

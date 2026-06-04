@@ -22,6 +22,7 @@ import { getSlugForMovieId, getKenyanPosterUrl } from '@/lib/hls';
 import VideoPlayer from '@/components/VideoPlayer';
 import AuthModal from '@/components/AuthModal';
 import { useAuth } from '@/components/AuthProvider';
+import { announceMediaPlay, onMediaPlay } from '@/lib/mediaBus';
 
 /* ────────────────────────────────────────────────────────
    5 Featured movies — rotating hero with background video
@@ -36,7 +37,10 @@ interface FeaturedMovie {
   overview: string;
   genres: string[];
   backdrop: string;
+  /** Short looping hero clip (background). */
   video: string;
+  /** Full trailer asset (played by "Watch Trailer"). */
+  trailer: string;
   tagline: string;
   stream_url?: string | null;
 }
@@ -54,6 +58,7 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     genres: ['Horror', 'Thriller', 'Mystery'],
     backdrop: assetUrl('/Images/backdrops/backdrop-get-out-2017.jpg'),
     video: assetUrl('/Videos/clips/hero-get-out-2017.mp4'),
+    trailer: assetUrl('/Videos/trailers/trailer-get-out-2017.mp4'),
     tagline: '#1 in Movies Today',
   },
   {
@@ -68,6 +73,7 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     genres: ['Action', 'Crime', 'Drama'],
     backdrop: assetUrl('/Images/backdrops/backdrop-sicario-2015.jpg'),
     video: assetUrl('/Videos/clips/hero-sicario-2015.mp4'),
+    trailer: assetUrl('/Videos/trailers/trailer-sicario-2015.mp4'),
     tagline: '#2 Trending in Kenya',
   },
   {
@@ -82,6 +88,7 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     genres: ['Sci-Fi', 'Action', 'Thriller'],
     backdrop: assetUrl('/Images/backdrops/backdrop-inception-2010.jpg'),
     video: assetUrl('/Videos/clips/hero-inception-2010.mp4'),
+    trailer: assetUrl('/Videos/trailers/trailer-inception-2010.mp4'),
     tagline: '#1 Top 10 Movies This Week',
   },
   {
@@ -96,6 +103,7 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     genres: ['Action', 'Crime', 'Drama'],
     backdrop: assetUrl('/Images/backdrops/backdrop-the-dark-knight-2008.jpg'),
     video: assetUrl('/Videos/clips/hero-the-dark-knight-2008.mp4'),
+    trailer: assetUrl('/Videos/trailers/trailer-the-dark-knight-2008.mp4'),
     tagline: '#3 Most Watched Worldwide',
   },
   {
@@ -110,6 +118,7 @@ const FEATURED_MOVIES: FeaturedMovie[] = [
     genres: ['Mystery', 'Thriller'],
     backdrop: assetUrl('/Images/backdrops/backdrop-shutter-island-2010.jpg'),
     video: assetUrl('/Videos/clips/hero-shutter-island-2010.mp4'),
+    trailer: assetUrl('/Videos/trailers/trailer-shutter-island-2010.mp4'),
     tagline: '#5 Top 10 Thrillers',
   },
 ];
@@ -120,11 +129,13 @@ const BACKDROP_DURATION = 3000; // show backdrop for 3s before video plays
 function MoreInfoModal({
   movie,
   onClose,
-  onPlay,
+  onPlayMovie,
+  onPlayTrailer,
 }: {
   movie: FeaturedMovie;
   onClose: () => void;
-  onPlay: () => void;
+  onPlayMovie: () => void;
+  onPlayTrailer: () => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -171,13 +182,22 @@ function MoreInfoModal({
             ))}
           </div>
           <p className="text-birgen-silver text-sm leading-relaxed mb-6">{movie.overview}</p>
-          <button
-            onClick={onPlay}
-            className="flex items-center gap-2 px-7 py-3 bg-white hover:bg-white/90 text-black font-bold rounded-md transition-all hover:scale-105 active:scale-95"
-          >
-            <Play className="w-5 h-5 fill-black" />
-            Play Trailer
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={onPlayMovie}
+              className="flex items-center gap-2 px-7 py-3 bg-white hover:bg-white/90 text-black font-bold rounded-md transition-all hover:scale-105 active:scale-95"
+            >
+              <Play className="w-5 h-5 fill-black" />
+              Play Movie
+            </button>
+            <button
+              onClick={onPlayTrailer}
+              className="flex items-center gap-2 px-7 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-105 active:scale-95"
+            >
+              <Film className="w-5 h-5" />
+              Watch Trailer
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -219,9 +239,9 @@ function FullscreenPlayer({
   const { getPosition, savePosition } = usePlaybackProgress();
   const movie = movies[currentIdx];
 
-  // Determine video source: stream URL (full movie) or hero clip
+  // Determine video source: full-movie stream, or the full trailer asset.
   const streamUrl = movie.stream_url || getStreamUrl(movie.movieId) || getStreamMp4Url(movie.movieId);
-  const videoSrc = streamMode && streamUrl ? streamUrl : movie.video;
+  const videoSrc = streamMode && streamUrl ? streamUrl : movie.trailer;
 
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
@@ -332,6 +352,7 @@ function FullscreenPlayer({
         muted={muted}
         playsInline
         onTimeUpdate={onTimeUpdate}
+        onPlay={announceMediaPlay}
         onEnded={goNext}
       >
         <source src={videoSrc} type={videoSrc.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'} />
@@ -472,6 +493,15 @@ export default function HeroBanner() {
     v.load();
     v.play().catch(() => {});
   }, [videoReady, activeIdx]);
+
+  // Mute the background trailer whenever any fullscreen player starts playing
+  // elsewhere on the platform (movie cards, hero player, etc.).
+  useEffect(() => {
+    return onMediaPlay(() => {
+      setMuted(true);
+      if (videoRef.current) videoRef.current.muted = true;
+    });
+  }, []);
 
   // When background video ends, advance to next movie
   const handleBgVideoEnded = () => {
@@ -690,7 +720,8 @@ export default function HeroBanner() {
         <MoreInfoModal
           movie={movie}
           onClose={handleCloseInfo}
-          onPlay={() => { handleCloseInfo(); handlePlay(undefined, hasStream(movie.movieId)); }}
+          onPlayMovie={() => { handleCloseInfo(); handlePlay(undefined, true); }}
+          onPlayTrailer={() => { handleCloseInfo(); handlePlay(undefined, false); }}
         />
       )}
     </>

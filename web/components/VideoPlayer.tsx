@@ -35,6 +35,7 @@ import { isHlsUrl } from '@/lib/hls';
 import { useWatchSession, type PlaybackTarget } from '@/hooks/useWatchSession';
 import { useScreenTime } from '@/hooks/useScreenTime';
 import { useAuth } from '@/components/AuthProvider';
+import { announceMediaPlay } from '@/lib/mediaBus';
 
 export interface VideoPlayerProps {
   /** Master HLS playlist URL (preferred) or direct MP4 URL. */
@@ -382,7 +383,10 @@ export default function VideoPlayer({
         onTimeUpdate={onTimeUpdate}
         onEnded={handleEnded}
         onPause={() => setPaused(true)}
-        onPlay={() => setPaused(false)}
+        onPlay={() => {
+          setPaused(false);
+          announceMediaPlay();
+        }}
         onWaiting={() => setLoading(true)}
         onCanPlay={() => setLoading(false)}
       />

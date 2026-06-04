@@ -15,15 +15,19 @@ import {
   VolumeX,
   ArrowLeft,
   Film,
+  Plus,
+  Check,
 } from 'lucide-react';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
+import { useMyList } from '@/hooks/useMyList';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 import { assetUrl } from '@/lib/assets';
 import toast from 'react-hot-toast';
 import AuthModal from '@/components/AuthModal';
 import { useAuth } from '@/components/AuthProvider';
+import { announceMediaPlay } from '@/lib/mediaBus';
 
 /* ── The 5 featured movies with MovieLens IDs ─────────── */
 interface Top5Movie {
@@ -217,15 +221,21 @@ function RatingPopup({
 function InfoPopup({
   movie,
   onClose,
+  onPlayMovie,
   onPlayTrailer,
   onRate,
   userRating,
+  inMyList,
+  onToggleList,
 }: {
   movie: Top5Movie;
   onClose: () => void;
+  onPlayMovie: () => void;
   onPlayTrailer: () => void;
   onRate: (rating: number) => void;
   userRating?: number;
+  inMyList: boolean;
+  onToggleList: () => void;
 }) {
   const [ratingMode, setRatingMode] = useState(false);
   const [hover, setHover] = useState(0);
@@ -331,13 +341,27 @@ function InfoPopup({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <button
-                onClick={onPlayTrailer}
+                onClick={onPlayMovie}
                 className="flex items-center gap-2 px-6 py-2.5 bg-white hover:bg-white/90 text-black font-bold rounded-md transition-all hover:scale-[1.03] active:scale-95 text-sm"
               >
                 <Play className="w-5 h-5 fill-black" />
+                Play Movie
+              </button>
+              <button
+                onClick={onPlayTrailer}
+                className="flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-[1.03] active:scale-95 text-sm"
+              >
+                <Film className="w-4 h-4" />
                 Watch Trailer
+              </button>
+              <button
+                onClick={onToggleList}
+                className="flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-[1.03] active:scale-95 text-sm"
+              >
+                {inMyList ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {inMyList ? 'In My List' : 'My List'}
               </button>
               <button
                 onClick={() => setRatingMode(true)}
@@ -530,6 +554,7 @@ function TrailerPlayer({
         muted={muted}
         playsInline
         onTimeUpdate={onTimeUpdate}
+        onPlay={announceMediaPlay}
         onEnded={handleTrailerEnded}
       >
         <source
@@ -651,12 +676,15 @@ function TrailerPlayer({
 /* ── Main Top 5 Kenya Section ─────────────────────────────── */
 export default function Top5Kenya() {
   const { ratings, rateMovie } = useRatings();
+  const { myList, addToList, removeFromList } = useMyList();
+  const myListIds = new Set(myList.map((m) => m.movieId));
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [infoMovie, setInfoMovie] = useState<Top5Movie | null>(null);
   const [trailerPlayer, setTrailerPlayer] = useState<{
     open: boolean;
     startIndex: number;
-  }>({ open: false, startIndex: 0 });
+    streamMode: boolean;
+  }>({ open: false, startIndex: 0, streamMode: false });
   const [pendingPlayIdx, setPendingPlayIdx] = useState<number | null>(null);
   const hoverTimeout = useRef<NodeJS.Timeout>();
   const { user } = useAuth();
@@ -671,29 +699,46 @@ export default function Top5Kenya() {
     setHoveredIdx(null);
   };
 
+  const top5ToMovie = (movie: Top5Movie): Movie => ({
+    movieId: movie.movieId,
+    title: movie.title,
+    genres: movie.genres,
+    year: movie.year,
+    poster_url: movie.poster,
+    backdrop_url: movie.backdrop,
+    overview: movie.overview,
+  });
+
   const handleRate = (movie: Top5Movie, rating: number) => {
-    const asMovie: Movie = {
-      movieId: movie.movieId,
-      title: movie.title,
-      genres: movie.genres,
-      year: movie.year,
-      poster_url: movie.poster,
-      backdrop_url: movie.backdrop,
-      overview: movie.overview,
-    };
-    rateMovie(asMovie, rating);
+    rateMovie(top5ToMovie(movie), rating);
     toast.success(`Rated "${movie.displayTitle}" ${rating}/5`, { duration: 2000 });
   };
 
+  const handleToggleList = (movie: Top5Movie) => {
+    if (myListIds.has(movie.movieId)) {
+      removeFromList(movie.movieId);
+      toast.success(`Removed "${movie.displayTitle}" from My List`, { duration: 2000 });
+    } else {
+      addToList(top5ToMovie(movie));
+      toast.success(`Added "${movie.displayTitle}" to My List`, { duration: 2000 });
+    }
+  };
+
+  // Watch Trailer — always plays the trailer asset, never the full stream.
   const openTrailer = (idx: number) => {
     setInfoMovie(null);
+    setTrailerPlayer({ open: true, startIndex: idx, streamMode: false });
+  };
+
+  // Play Movie — plays the full HLS stream (resume + screen-time). Auth-gated.
+  const openMovie = (idx: number) => {
+    setInfoMovie(null);
     const movie = TOP5_MOVIES[idx];
-    // Full-stream playback requires sign-in (or explicit guest opt-in).
     if (movie && hasStream(movie.movieId) && !user) {
       setPendingPlayIdx(idx);
       return;
     }
-    setTrailerPlayer({ open: true, startIndex: idx });
+    setTrailerPlayer({ open: true, startIndex: idx, streamMode: true });
   };
 
   return (
@@ -795,6 +840,12 @@ export default function Top5Kenya() {
         <InfoPopup
           movie={infoMovie}
           onClose={() => setInfoMovie(null)}
+          onPlayMovie={() => {
+            const idx = TOP5_MOVIES.findIndex(
+              (m) => m.movieId === infoMovie.movieId,
+            );
+            openMovie(idx >= 0 ? idx : 0);
+          }}
           onPlayTrailer={() => {
             const idx = TOP5_MOVIES.findIndex(
               (m) => m.movieId === infoMovie.movieId,
@@ -803,6 +854,8 @@ export default function Top5Kenya() {
           }}
           onRate={(rating) => handleRate(infoMovie, rating)}
           userRating={ratings.get(infoMovie.movieId)}
+          inMyList={myListIds.has(infoMovie.movieId)}
+          onToggleList={() => handleToggleList(infoMovie)}
         />
       )}
 
@@ -811,10 +864,10 @@ export default function Top5Kenya() {
         <TrailerPlayer
           movies={TOP5_MOVIES}
           startIndex={trailerPlayer.startIndex}
-          onClose={() => setTrailerPlayer({ open: false, startIndex: 0 })}
+          onClose={() => setTrailerPlayer({ open: false, startIndex: 0, streamMode: false })}
           onRateMovie={handleRate}
           userRatings={ratings}
-          streamMode={hasStream(TOP5_MOVIES[trailerPlayer.startIndex]?.movieId ?? 0)}
+          streamMode={trailerPlayer.streamMode}
         />
       )}
 
@@ -827,7 +880,7 @@ export default function Top5Kenya() {
           onContinueGuest={() => {
             const idx = pendingPlayIdx;
             setPendingPlayIdx(null);
-            setTrailerPlayer({ open: true, startIndex: idx });
+            setTrailerPlayer({ open: true, startIndex: idx, streamMode: true });
           }}
         />
       )}

@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/components/AuthProvider';
 import OtpGate from '@/components/OtpGate';
+import EnrichWarmup from '@/components/EnrichWarmup';
 
 export const metadata: Metadata = {
   title: 'BirgenAI Movies - Personalized Picks, Powered by AI',
@@ -44,6 +45,7 @@ export default function RootLayout({
       </head>
       <body className="bg-birgen-black font-body antialiased">
         <AuthProvider>
+          <EnrichWarmup />
           <OtpGate>
           <Toaster
             position="top-right"
