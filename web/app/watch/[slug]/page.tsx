@@ -83,7 +83,14 @@ export default function WatchPage() {
   const usable = (u?: string | null) => (u && !u.includes('<') ? u : null);
 
   const src = useMemo(() => {
-    return usable(movie?.hls_master_url) ?? getKenyanHlsUrl(slug) ?? '';
+    // For the launch-5 (slugs we have an HLS mapping for), the computed R2 path
+    // is authoritative: several kenyan_movies rows were seeded with a stale
+    // folder ("/Videos/<slug>/" instead of "/Videos/films/<slug>/"), which 404s.
+    // For any other slug, trust the DB value first.
+    const computed = getKenyanHlsUrl(slug);
+    const isLaunchTitle = Object.values(KENYAN_HLS_MAP).includes(slug);
+    if (isLaunchTitle && computed) return computed;
+    return usable(movie?.hls_master_url) ?? computed ?? '';
   }, [movie, slug]);
 
   const poster =

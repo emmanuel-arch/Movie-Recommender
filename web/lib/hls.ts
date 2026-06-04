@@ -9,8 +9,12 @@
  */
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? '').replace(/\/$/, '');
-/** e.g. `Videos` (default) or `Videos/films` to match your R2 layout. */
-const HLS_ROOT = (process.env.NEXT_PUBLIC_HLS_ROOT ?? 'Videos').replace(/\/$/, '');
+/**
+ * R2 folder holding the HLS transcodes. The launch-5 live under `Videos/films`
+ * (e.g. `Videos/films/get-out/master.m3u8`), so that is the default — overriding
+ * NEXT_PUBLIC_HLS_ROOT is only needed if your bucket uses a different layout.
+ */
+const HLS_ROOT = (process.env.NEXT_PUBLIC_HLS_ROOT ?? 'Videos/films').replace(/\/$/, '');
 
 /**
  * MovieLens ID → Kenyan catalogue slug, for the featured 5 titles.
