@@ -263,10 +263,18 @@ export default function VideoPlayer({
 
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
-    if (!container) return;
+    const video = videoRef.current as
+      | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+      | null;
     if (!document.fullscreenElement) {
       try {
-        await container.requestFullscreen();
+        // Fullscreen the whole player container so our custom controls stay on
+        // top. requestFullscreen() escapes the hub iframe (the iframe grants
+        // allow="fullscreen"), so the BirgenAI header disappears too — true
+        // Netflix-style. iOS Safari can't fullscreen a div, so fall back to the
+        // native video element fullscreen.
+        if (container?.requestFullscreen) await container.requestFullscreen();
+        else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen();
       } catch {
         /* user gesture required in some browsers */
       }
@@ -478,9 +486,11 @@ export default function VideoPlayer({
           </div>
         </div>
 
-        {/* Center tap area */}
+        {/* Center tap area — single tap toggles play, double tap toggles
+            fullscreen (the two single-tap play toggles cancel out). */}
         <button
           onClick={togglePlay}
+          onDoubleClick={() => void toggleFullscreen()}
           className="flex-1 cursor-pointer"
           aria-label={paused ? 'Play' : 'Pause'}
         />

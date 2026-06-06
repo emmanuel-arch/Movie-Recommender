@@ -24,9 +24,10 @@ export async function middleware(request: NextRequest) {
   const useSecureCookies =
     (process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? '').startsWith('https://') ||
     process.env.NODE_ENV === 'production';
+  // Must match cookies.sessionToken.name in auth.config.ts (suite-specific name).
   const cookieName = useSecureCookies
-    ? '__Secure-authjs.session-token'
-    : 'authjs.session-token';
+    ? '__Secure-birgenai-suite.session-token'
+    : 'birgenai-suite.session-token';
 
   const token = await getToken({
     req: request,

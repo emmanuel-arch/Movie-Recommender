@@ -298,10 +298,14 @@ export const authConfig: NextAuthConfig = {
   // Unset in local dev so localhost cookies keep working.
   cookies: {
     sessionToken: {
+      // Suite-specific name (NOT the Auth.js default `authjs.session-token`) so the
+      // domain-scoped suite cookie never collides with any legacy host-only cookie
+      // left in users' browsers from before SSO. Must stay identical to the hub —
+      // it's also the JWE salt, so it has to match for cross-app decryption.
       name:
         process.env.NODE_ENV === "production"
-          ? "__Secure-authjs.session-token"
-          : "authjs.session-token",
+          ? "__Secure-birgenai-suite.session-token"
+          : "birgenai-suite.session-token",
       options: {
         httpOnly: true,
         sameSite: "lax" as const,
