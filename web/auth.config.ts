@@ -8,6 +8,29 @@ import bcrypt from "bcryptjs";
 import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 
+/**
+ * Normalises AUTH_COOKIE_DOMAIN so a malformed value can't silently break auth
+ * (a `Set-Cookie` with an invalid Domain is dropped by the browser, leaving no
+ * session cookie at all). Tolerates a pasted full URL / path / port / casing.
+ * Any birgenai.com host (www., movies., apex) collapses to the shared parent
+ * ".birgenai.com" so the session spans the whole suite. Unset / localhost /
+ * preview hosts → undefined (host-only cookie, the safe default).
+ * Must stay identical to the hub (birgen-ai-frontend) resolver.
+ */
+function resolveAuthCookieDomain(): string | undefined {
+  const raw = process.env.AUTH_COOKIE_DOMAIN?.trim();
+  if (!raw) return undefined;
+  const host = raw
+    .replace(/^https?:\/\//i, "")
+    .replace(/[/:].*$/, "")
+    .toLowerCase();
+  if (!host || host === "localhost") return undefined;
+  if (host.endsWith("birgenai.com")) return ".birgenai.com";
+  return host;
+}
+
+const AUTH_COOKIE_DOMAIN = resolveAuthCookieDomain();
+
 export const authConfig: NextAuthConfig = {
   providers: [
     CredentialsProvider({
@@ -284,9 +307,7 @@ export const authConfig: NextAuthConfig = {
         sameSite: "lax" as const,
         path: "/",
         secure: process.env.NODE_ENV === "production",
-        ...(process.env.AUTH_COOKIE_DOMAIN
-          ? { domain: process.env.AUTH_COOKIE_DOMAIN }
-          : {}),
+        ...(AUTH_COOKIE_DOMAIN ? { domain: AUTH_COOKIE_DOMAIN } : {}),
       },
     },
   },
