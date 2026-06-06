@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import AppleProvider from "next-auth/providers/apple";
 import { prisma } from "@/lib/prisma";
+import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import bcrypt from "bcryptjs";
 import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "next-auth/jwt";
@@ -154,16 +155,80 @@ export const authConfig: NextAuthConfig = {
           });
 
           if (!existingUser) {
-            // Create new user with default values
+            // Mirror /api/auth/register's dual-write (and the hub's auth.config.ts) so
+            // OAuth users are provisioned identically to email/password users: create the
+            // Supabase auth.users row FIRST so the user gets a real UUID id
+            // (watching_profiles.user_id / watch_sessions.user_id are uuid columns / FKs
+            // to auth.users) and so the handle_new_user() trigger mints
+            // profiles.birgenai_id. Without this the Prisma @default(cuid()) id
+            // (e.g. "cmq27v6u5...") is rejected by Postgres with "invalid input syntax
+            // for type uuid" the moment they create a watching profile.
+            const supabase = getSupabaseServiceClient();
+            if (!supabase) {
+              console.error("OAuth sign-in blocked: Supabase service client not configured; cannot provision account");
+              return false;
+            }
+
+            let supabaseUserId: string | null = null;
+            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+              email: profile.email,
+              email_confirm: true,
+              user_metadata: { display_name: profile.name || "" },
+            });
+
+            if (authError || !authData?.user?.id) {
+              // The email may already have a Supabase auth account (e.g. an earlier
+              // credentials signup whose Prisma row is missing). Recover its id so the
+              // Prisma id stays aligned with the existing auth.users UUID.
+              const msg = authError?.message?.toLowerCase() ?? "";
+              if (
+                msg.includes("already") ||
+                msg.includes("registered") ||
+                msg.includes("exists") ||
+                authError?.status === 422
+              ) {
+                const { data: list } = await supabase.auth.admin.listUsers();
+                const match = list?.users?.find(
+                  (u) => u.email?.toLowerCase() === profile.email!.toLowerCase()
+                );
+                supabaseUserId = match?.id ?? null;
+              }
+              if (!supabaseUserId) {
+                console.error("OAuth sign-in blocked: could not provision Supabase auth user:", authError);
+                return false;
+              }
+            } else {
+              supabaseUserId = authData.user.id;
+            }
+
+            // Wait for the handle_new_user() trigger to mint profiles.birgenai_id.
+            let birgenAiId: string | null = null;
+            for (let i = 0; i < 10; i++) {
+              const { data: profileRow } = await supabase
+                .from("profiles")
+                .select("birgenai_id")
+                .eq("id", supabaseUserId)
+                .maybeSingle();
+              const row = profileRow as { birgenai_id?: string } | null;
+              if (row?.birgenai_id) {
+                birgenAiId = row.birgenai_id;
+                break;
+              }
+              await new Promise((r) => setTimeout(r, 120));
+            }
+
+            // Create the Prisma user with id === Supabase auth UUID.
             const newUser = await prisma.user.create({
               data: {
+                id: supabaseUserId,
                 email: profile.email,
                 name: profile.name || "",
                 role: "INDIVIDUAL", // Using uppercase to match enum
-                tier: "FREE"
+                tier: "FREE",
+                birgenAiId,
               }
             });
-            
+
             // Update user object with database values
             user.id = newUser.id;
             (user as any).role = newUser.role;
@@ -201,6 +266,29 @@ export const authConfig: NextAuthConfig = {
   },
   session: {
     strategy: "jwt" as const,
+  },
+  // Single sign-on across the BirgenAI suite. Must mirror the hub
+  // (birgen-ai-frontend) EXACTLY: same AUTH_SECRET, same session-cookie name, and
+  // the same parent-domain pin (set AUTH_COOKIE_DOMAIN=.birgenai.com in prod) so a
+  // session minted on www.birgenai.com is sent to — and decryptable on —
+  // movies.birgenai.com, including when Movies is loaded in the hub's iframe.
+  // Unset in local dev so localhost cookies keep working.
+  cookies: {
+    sessionToken: {
+      name:
+        process.env.NODE_ENV === "production"
+          ? "__Secure-authjs.session-token"
+          : "authjs.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+        ...(process.env.AUTH_COOKIE_DOMAIN
+          ? { domain: process.env.AUTH_COOKIE_DOMAIN }
+          : {}),
+      },
+    },
   },
   secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
 };
