@@ -31,12 +31,12 @@ if [[ ! -f "$OUT/master.m3u8" ]]; then
   echo "Warning: missing $OUT/master.m3u8 — upload may be incomplete." >&2
 fi
 
-echo "→ Uploading ./hls/$SLUG/ to R2 bucket '$R2_BUCKET' as Videos/$SLUG/"
+echo "→ Uploading ./hls/$SLUG/ to R2 bucket '$R2_BUCKET' as Videos/films/$SLUG/"
 
 while IFS= read -r -d '' FILE; do
   REL="${FILE#$OUT/}"
   REL="${REL#/}" # strip leading slash if any
-  KEY="Videos/$SLUG/$REL"
+  KEY="Videos/films/$SLUG/$REL"
   case "$REL" in
     *.m3u8) CT="application/vnd.apple.mpegurl" ;;
     *.ts)   CT="video/mp2t" ;;
@@ -52,4 +52,4 @@ while IFS= read -r -d '' FILE; do
 done < <(find "$OUT" -type f -print0)
 
 echo "✓ Done."
-echo "  https://<R2_PUBLIC_HOST>/Videos/$SLUG/master.m3u8"
+echo "  https://<R2_PUBLIC_HOST>/Videos/films/$SLUG/master.m3u8"

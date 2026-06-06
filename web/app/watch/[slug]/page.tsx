@@ -19,6 +19,7 @@ import AuthModal from '@/components/AuthModal';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/AuthProvider';
 import { getKenyanHlsUrl, getKenyanPosterUrl, KENYAN_HLS_MAP } from '@/lib/hls';
+import { getSubtitleTracksForSlug } from '@/lib/subtitles';
 import type { KenyanMovie } from '@/lib/supabase/types';
 
 const LAUNCH_FALLBACK: Record<string, Partial<KenyanMovie>> = {
@@ -99,6 +100,8 @@ export default function WatchPage() {
     getKenyanPosterUrl(slug) ||
     undefined;
 
+  const subtitles = useMemo(() => getSubtitleTracksForSlug(slug), [slug]);
+
   if (loading || authLoading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
@@ -147,6 +150,7 @@ export default function WatchPage() {
           poster={poster || undefined}
           title={title}
           subtitle={subtitleBits.join(' · ')}
+          subtitles={subtitles}
           fullMovie
           target={{ movieSlug: slug, movieId: legacyId ? Number(legacyId) : null }}
           onClose={() => router.push('/')}

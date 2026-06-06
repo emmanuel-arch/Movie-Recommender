@@ -29,9 +29,11 @@ import {
   Settings,
   Check,
   Film,
+  Captions,
 } from 'lucide-react';
 import Hls, { type Level } from 'hls.js';
 import { isHlsUrl } from '@/lib/hls';
+import type { SubtitleTrack } from '@/lib/subtitles';
 import { useWatchSession, type PlaybackTarget } from '@/hooks/useWatchSession';
 import { useScreenTime } from '@/hooks/useScreenTime';
 import { useAuth } from '@/components/AuthProvider';
@@ -52,6 +54,8 @@ export interface VideoPlayerProps {
   fullMovie?: boolean;
   /** Playback target for watch-session tracking (mutually exclusive: slug OR id). */
   target?: PlaybackTarget;
+  /** WebVTT subtitle tracks (English / Kiswahili / French). */
+  subtitles?: SubtitleTrack[];
   /** Called when the user closes the player (Esc / back button). */
   onClose: () => void;
   /** Called when playback finishes. */
@@ -80,6 +84,7 @@ export default function VideoPlayer({
   subtitle,
   fullMovie,
   target,
+  subtitles = [],
   onClose,
   onEnded,
   onPrev,
@@ -101,6 +106,8 @@ export default function VideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [ccOpen, setCcOpen] = useState(false);
+  const [activeCC, setActiveCC] = useState<string>('off'); // 'off' | lang code
   const [levels, setLevels] = useState<Level[]>([]);
   const [currentLevel, setCurrentLevel] = useState<number>(-1);
   const [bufferedPercent, setBufferedPercent] = useState(0);
@@ -366,6 +373,34 @@ export default function VideoPlayer({
     }
   }, []);
 
+  // ── subtitles (WebVTT side-loaded tracks) ─────────────────────────────────
+  // Apply the chosen caption track imperatively: the browser exposes the
+  // sideloaded <track>s as video.textTracks; we flip exactly one to 'showing'.
+  const applyCaption = useCallback((lang: string) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const tracks = v.textTracks;
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].mode = lang !== 'off' && tracks[i].language === lang ? 'showing' : 'disabled';
+    }
+  }, []);
+
+  const selectCaption = useCallback(
+    (lang: string) => {
+      setActiveCC(lang);
+      applyCaption(lang);
+      setCcOpen(false);
+      resetControlsTimer();
+    },
+    [applyCaption, resetControlsTimer],
+  );
+
+  // Re-assert the active track once the <track> elements have loaded (and when
+  // the source changes), since the browser resets modes on load.
+  useEffect(() => {
+    applyCaption(activeCC);
+  }, [applyCaption, activeCC, subtitles, src]);
+
   // ── render ───────────────────────────────────────────────────────────────
   return (
     <div
@@ -389,7 +424,17 @@ export default function VideoPlayer({
         }}
         onWaiting={() => setLoading(true)}
         onCanPlay={() => setLoading(false)}
-      />
+      >
+        {subtitles.map((t) => (
+          <track
+            key={t.lang}
+            kind="subtitles"
+            srcLang={t.lang}
+            label={t.label}
+            src={t.src}
+          />
+        ))}
+      </video>
 
       {/* Loading spinner */}
       {loading && (
@@ -508,10 +553,47 @@ export default function VideoPlayer({
               </button>
             )}
 
+            {subtitles.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => { setCcOpen((s) => !s); setSettingsOpen(false); }}
+                  className={`transition-colors ${activeCC !== 'off' ? 'text-birgen-red' : 'text-white hover:text-white/80'}`}
+                  aria-label="Subtitles"
+                  title="Subtitles"
+                >
+                  <Captions className="w-5 h-5" />
+                </button>
+                {ccOpen && (
+                  <div className="absolute right-0 bottom-full mb-2 min-w-[180px] rounded-md bg-black/90 border border-white/15 backdrop-blur-sm overflow-hidden shadow-2xl">
+                    <div className="px-3 py-2 text-[11px] uppercase tracking-wider text-white/40 border-b border-white/10">
+                      Subtitles
+                    </div>
+                    <button
+                      onClick={() => selectCaption('off')}
+                      className="flex items-center justify-between w-full px-3 py-2 text-sm text-white hover:bg-white/10"
+                    >
+                      <span>Off</span>
+                      {activeCC === 'off' && <Check className="w-4 h-4 text-birgen-red" />}
+                    </button>
+                    {subtitles.map((t) => (
+                      <button
+                        key={t.lang}
+                        onClick={() => selectCaption(t.lang)}
+                        className="flex items-center justify-between w-full px-3 py-2 text-sm text-white hover:bg-white/10"
+                      >
+                        <span>{t.label}</span>
+                        {activeCC === t.lang && <Check className="w-4 h-4 text-birgen-red" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {levels.length > 0 && (
               <div className="relative">
                 <button
-                  onClick={() => setSettingsOpen((s) => !s)}
+                  onClick={() => { setSettingsOpen((s) => !s); setCcOpen(false); }}
                   className="text-white hover:text-white/80"
                   aria-label="Quality"
                 >

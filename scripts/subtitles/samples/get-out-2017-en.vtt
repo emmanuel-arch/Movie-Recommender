@@ -1,0 +1,28 @@
+WEBVTT
+
+NOTE
+Format reference only — placeholder text, NOT the film's dialogue.
+Replace with the output of generate_subs.py. Shows the cue features the
+player supports: multi-line cues, italics, speaker labels, and sound cues.
+
+1
+00:00:01.000 --> 00:00:04.000
+[ English captions — sample cue one ]
+
+2
+00:00:04.200 --> 00:00:08.500
+This line shows a longer cue that wraps
+onto a second line for readability.
+
+3
+00:00:09.000 --> 00:00:11.500
+<i>(soft music playing)</i>
+
+4
+00:00:12.000 --> 00:00:15.000
+- Speaker A: Placeholder line.
+- Speaker B: Another placeholder line.
+
+5
+00:00:15.500 --> 00:00:18.000
+[ Replace every cue with real transcription output ]
