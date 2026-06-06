@@ -1,24 +1,20 @@
 'use client';
 /**
- * "Continue Watching" — rendered first on the home page.
+ * "Continue Watching for {profile}" — rendered first on the home page.
  *
- * Sources data from `useContinueWatching` which merges:
- *   - Supabase `continue_watching` view (signed-in users)
- *   - localStorage (guests + offline)
- *
- * Each card shows:
- *   - The backdrop (Kenyan row → R2 backdrop_url, Hollywood row → TMDB)
- *   - A progress bar with % watched
- *   - Time remaining overlay
- *   - Click → /watch/<slug> or opens the existing fullscreen player
+ * Sources data from `useContinueWatching` (Supabase view for signed-in users,
+ * localStorage for guests). Title + artwork are resolved through the catalog so
+ * rows always show the real movie name and a backdrop (rather than a raw
+ * "Movie <id>" with no art). Cards are landscape (16:9) like Netflix.
  */
 
 import Image from 'next/image';
 import Link from 'next/link';
 import { Play, RotateCcw, X } from 'lucide-react';
 import { useContinueWatching, type ContinueWatchingItem } from '@/hooks/useWatchSession';
+import { useAuth } from '@/components/AuthProvider';
 import { KENYAN_HLS_MAP } from '@/lib/hls';
-import { getCatalogPosterUrlForSlug } from '@/lib/catalog';
+import { getCatalogEntryBySlug, catalogBackdropPath, catalogPosterPath } from '@/lib/catalog';
 
 interface Props {
   onResume?: (item: ContinueWatchingItem) => void;
@@ -26,24 +22,27 @@ interface Props {
 
 export default function ContinueWatchingRow({ onResume }: Props) {
   const { items, loading } = useContinueWatching();
+  const { activeWatchingProfile } = useAuth();
 
   if (loading) return null;
   if (items.length === 0) return null;
+
+  const who = activeWatchingProfile?.name?.trim();
 
   return (
     <section className="pt-6 pb-4">
       <div className="flex items-center justify-between mb-3 px-4 sm:px-6 lg:px-12">
         <h2 className="font-display text-2xl sm:text-3xl text-white tracking-wide">
-          CONTINUE WATCHING
+          {who ? `Continue Watching for ${who}` : 'Continue Watching'}
         </h2>
         <span className="text-xs text-birgen-muted">Picks up where you left off</span>
       </div>
 
       <div
-        className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-12 pb-3 scroll-smooth"
+        className="flex gap-4 overflow-x-auto px-4 sm:px-6 lg:px-12 pb-3 scroll-smooth"
         style={{ scrollbarWidth: 'none' }}
       >
-        {items.slice(0, 6).map((item) => (
+        {items.slice(0, 12).map((item) => (
           <ContinueCard key={cardKey(item)} item={item} onResume={onResume} />
         ))}
       </div>
@@ -55,6 +54,26 @@ function cardKey(item: ContinueWatchingItem): string {
   return item.movieSlug ? `slug:${item.movieSlug}` : `id:${item.movieId}`;
 }
 
+/** Resolve slug → catalog entry → real title + landscape backdrop. */
+function resolveCard(item: ContinueWatchingItem) {
+  const slug =
+    item.movieSlug ?? (item.movieId != null ? KENYAN_HLS_MAP[item.movieId] ?? null : null);
+  const entry = slug ? getCatalogEntryBySlug(slug) : undefined;
+
+  const title =
+    entry?.displayTitle ??
+    item.title ??
+    (slug ? prettify(slug) : item.movieId != null ? `Movie ${item.movieId}` : 'Untitled');
+
+  const imageUrl =
+    (entry ? catalogBackdropPath(entry) : null) ||
+    item.backdrop ||
+    (entry ? catalogPosterPath(entry) : null) ||
+    null;
+
+  return { slug, title, imageUrl };
+}
+
 function ContinueCard({
   item,
   onResume,
@@ -62,30 +81,35 @@ function ContinueCard({
   item: ContinueWatchingItem;
   onResume?: (item: ContinueWatchingItem) => void;
 }) {
-  const title = item.title ?? (item.movieSlug ? prettify(item.movieSlug) : `Movie ${item.movieId ?? ''}`);
+  const { slug, title, imageUrl } = resolveCard(item);
   const remaining = Math.max(0, Math.round((item.duration - item.position) / 60));
-  const slug =
-    item.movieSlug ??
-    (item.movieId != null ? KENYAN_HLS_MAP[item.movieId] ?? null : null);
-  const poster = (slug && getCatalogPosterUrlForSlug(slug)) || null;
-  const imageUrl = poster || item.backdrop || null;
+
   const Inner = (
     <div className="relative group cursor-pointer">
-      <div className="relative w-[140px] sm:w-[160px] aspect-[2/3] rounded-lg overflow-hidden bg-birgen-card border border-birgen-border shrink-0">
+      <div className="relative w-[260px] sm:w-[300px] aspect-video rounded-lg overflow-hidden bg-birgen-card border border-birgen-border shrink-0">
         {imageUrl ? (
           <Image
             src={imageUrl}
             alt={title}
             fill
             className="object-cover transition-transform duration-500 group-hover:scale-105"
-            sizes="160px"
+            sizes="300px"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-birgen-muted">
             <Play className="w-10 h-10" />
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
+
+        {/* Title overlaid bottom-left (Netflix style) */}
+        <div className="absolute bottom-2.5 left-3 right-3">
+          <p className="text-white text-sm font-semibold drop-shadow-lg line-clamp-1">{title}</p>
+          <p className="text-[11px] text-white/70 flex items-center gap-1 mt-0.5">
+            <RotateCcw className="w-3 h-3" />
+            {remaining > 0 ? `${remaining} min left` : 'Ready to resume'}
+          </p>
+        </div>
 
         {/* Progress bar */}
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/15">
@@ -109,30 +133,21 @@ function ContinueCard({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Hook this up to a remove-from-history mutation later.
           }}
           aria-label="Remove"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
-
-      <div className="mt-2 px-0.5 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-white text-sm font-semibold truncate">{title}</p>
-          <p className="text-[11px] text-birgen-muted flex items-center gap-1">
-            <RotateCcw className="w-3 h-3" />
-            {remaining > 0 ? `${remaining} min left` : 'Ready to resume'}
-          </p>
-        </div>
-      </div>
     </div>
   );
 
-  // Prefer in-place resume (opens the fullscreen player) when a handler is
-  // provided; otherwise route to the watch page.
   if (onResume) {
-    return <button onClick={() => onResume(item)} className="text-left">{Inner}</button>;
+    return (
+      <button onClick={() => onResume(item)} className="text-left shrink-0">
+        {Inner}
+      </button>
+    );
   }
   if (slug) {
     return (

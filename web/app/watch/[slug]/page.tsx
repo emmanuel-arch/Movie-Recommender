@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import VideoPlayer from '@/components/VideoPlayer';
 import AuthModal from '@/components/AuthModal';
+import { getNextPlayable } from '@/lib/playableMovies';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/AuthProvider';
 import { getKenyanHlsUrl, getKenyanPosterUrl, KENYAN_HLS_MAP } from '@/lib/hls';
@@ -144,19 +145,34 @@ export default function WatchPage() {
 
   return (
     <>
-      {canPlay && (
-        <VideoPlayer
-          src={src}
-          poster={poster || undefined}
-          title={title}
-          subtitle={subtitleBits.join(' · ')}
-          subtitles={subtitles}
-          fullMovie
-          target={{ movieSlug: slug, movieId: legacyId ? Number(legacyId) : null }}
-          onClose={() => router.push('/')}
-          onEnded={() => router.push('/')}
-        />
-      )}
+      {canPlay && (() => {
+        const next = getNextPlayable(slug);
+        const goNext = next ? () => router.push(`/watch/${next.slug}`) : undefined;
+        return (
+          <VideoPlayer
+            src={src}
+            poster={poster || undefined}
+            title={title}
+            subtitle={subtitleBits.join(' · ')}
+            subtitles={subtitles}
+            fullMovie
+            target={{ movieSlug: slug, movieId: legacyId ? Number(legacyId) : null }}
+            onClose={() => router.push('/')}
+            onEnded={() => (goNext ? goNext() : router.push('/'))}
+            nextUp={
+              next
+                ? {
+                    title: next.title,
+                    year: next.year,
+                    overview: next.overview,
+                    backdrop: next.backdrop,
+                    onPlay: goNext!,
+                  }
+                : null
+            }
+          />
+        );
+      })()}
 
       {authGate && !user && (
         <AuthModal

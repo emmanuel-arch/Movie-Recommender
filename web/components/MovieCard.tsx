@@ -2,10 +2,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { Star, Play, Plus, Check, ThumbsUp, X, ArrowLeft, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Film } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Movie } from '@/types';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 import { announceMediaPlay } from '@/lib/mediaBus';
+import FullMoviePlayer from '@/components/FullMoviePlayer';
+import { getPlayableBySlug } from '@/lib/playableMovies';
 
 interface MovieCardProps {
   movie: Movie;
@@ -32,6 +35,9 @@ export default function MovieCard({
   const [showRatingPopup, setShowRatingPopup] = useState(false);
   const [playerMode, setPlayerMode] = useState<'movie' | 'trailer' | null>(null);
   const [ratingHover, setRatingHover] = useState(0);
+  const router = useRouter();
+  // A playable title routes full-movie playback through the unified player.
+  const playableSlug = movie.slug && getPlayableBySlug(movie.slug) ? movie.slug : null;
 
   const genres = movie.genres?.split('|').slice(0, 2) || [];
   const rated = userRating !== undefined && userRating > 0;
@@ -284,8 +290,20 @@ export default function MovieCard({
         </div>
       )}
 
-      {/* Fullscreen Player — trailer asset, or streams movie / "Coming Soon" */}
-      {playerMode && (
+      {/* Full movie → unified Netflix-grade player (playable titles only). */}
+      {playerMode === 'movie' && playableSlug && (
+        <FullMoviePlayer
+          slug={playableSlug}
+          onClose={() => setPlayerMode(null)}
+          onChangeSlug={(s) => {
+            setPlayerMode(null);
+            router.push(`/watch/${s}`);
+          }}
+        />
+      )}
+
+      {/* Trailer, or non-playable "Coming Soon", keep the lightweight player. */}
+      {playerMode && !(playerMode === 'movie' && playableSlug) && (
         <StreamPlayer
           movie={movie}
           displayTitle={displayTitle}

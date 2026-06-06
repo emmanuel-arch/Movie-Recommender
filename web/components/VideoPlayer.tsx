@@ -1,69 +1,72 @@
 'use client';
 /**
- * BirgenAI VideoPlayer — Netflix-grade HLS + MP4 fullscreen player.
+ * BirgenAI VideoPlayer — the ONE Netflix-grade player used everywhere a full
+ * movie plays (Hero, Top 5, Browse, Continue Watching, /watch). Every avenue
+ * routes through this so the experience is identical.
  *
- *   ✓ Adaptive bitrate via HLS.js (ABR: auto-quality based on bandwidth)
- *   ✓ Native HLS on Safari/iOS (CanPlayType check)
- *   ✓ Falls back cleanly to MP4 source
- *   ✓ Resume from last saved position (Supabase for signed-in, LS for guests)
- *   ✓ Persists progress every ~10 s (debounced)
- *   ✓ Accumulates actual-watched-seconds for screen-time billing
- *   ✓ Screen-time paywall: stops playback once the user crosses the free cap
- *   ✓ Netflix keybindings: Space (play/pause), ←/→ (seek 15s), M (mute), F (fullscreen), Esc (close)
- *   ✓ Level selector (Auto / 1080p / 720p / 480p / 360p) when HLS is loaded
+ *   ✓ Adaptive HLS via HLS.js (+ native HLS on Safari/iOS, MP4 fallback)
+ *   ✓ Resume from last position, progress + screen-time accounting, paywall
+ *   ✓ Center play/pause pulse that fades out
+ *   ✓ 10s rewind / 10s forward (number inside the ring), hover-grow
+ *   ✓ Volume flyout (hover the speaker → vertical slider)
+ *   ✓ Title centered; right cluster: Next Movie · Audio&Subtitles · Speed · Fullscreen
+ *   ✓ Next Movie recommends the next *playable* title (Top 5 order, wraps)
+ *   ✓ Keybindings: Space, ←/→ (10s), M, F, N (next), Esc
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Pause,
   Play,
-  RotateCcw,
-  RotateCw,
-  SkipBack,
-  SkipForward,
+  Pause,
   Volume2,
   VolumeX,
   Maximize,
   Minimize,
-  Settings,
   Check,
   Film,
   Captions,
+  SkipForward,
+  Gauge,
+  Lock,
+  Layers,
 } from 'lucide-react';
 import Hls, { type Level } from 'hls.js';
+import Image from 'next/image';
 import { isHlsUrl } from '@/lib/hls';
 import type { SubtitleTrack } from '@/lib/subtitles';
 import { useWatchSession, type PlaybackTarget } from '@/hooks/useWatchSession';
 import { useScreenTime } from '@/hooks/useScreenTime';
 import { useAuth } from '@/components/AuthProvider';
 import { announceMediaPlay } from '@/lib/mediaBus';
+import {
+  AUDIO_TRACKS,
+  SUPPORTED_SUBTITLE_LANGS,
+  LOCKED_SUBTITLE_LANGS,
+  PLAYBACK_SPEEDS,
+} from '@/lib/playableMovies';
+
+export interface NextUpMovie {
+  title: string;
+  year?: string | number;
+  overview?: string;
+  backdrop?: string | null;
+  onPlay: () => void;
+}
 
 export interface VideoPlayerProps {
-  /** Master HLS playlist URL (preferred) or direct MP4 URL. */
   src: string;
-  /** MP4 fallback for browsers without HLS support. */
   fallbackMp4?: string | null;
-  /** Poster frame (JPG/PNG). */
   poster?: string | null;
-  /** Display title in the top bar. */
   title: string;
-  /** Release year / maturity / runtime — optional. */
   subtitle?: string;
-  /** If true, shows a "Full Movie" badge and enables progress tracking. */
   fullMovie?: boolean;
-  /** Playback target for watch-session tracking (mutually exclusive: slug OR id). */
   target?: PlaybackTarget;
-  /** WebVTT subtitle tracks (English / Kiswahili / French). */
   subtitles?: SubtitleTrack[];
-  /** Called when the user closes the player (Esc / back button). */
   onClose: () => void;
-  /** Called when playback finishes. */
   onEnded?: () => void;
-  /** Prev / Next navigation — renders the standard Netflix prev/next buttons. */
-  onPrev?: () => void;
-  onNext?: () => void;
-  /** Show the screen-time paywall on cap? Default: true for signed-in free users. */
+  /** The next recommended playable movie (renders the Next-Movie control). */
+  nextUp?: NextUpMovie | null;
   enforceScreenTime?: boolean;
 }
 
@@ -87,14 +90,14 @@ export default function VideoPlayer({
   subtitles = [],
   onClose,
   onEnded,
-  onPrev,
-  onNext,
+  nextUp,
   enforceScreenTime = true,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTimeRef = useRef<number>(0);
 
   const [paused, setPaused] = useState(false);
@@ -105,11 +108,19 @@ export default function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [ccOpen, setCcOpen] = useState(false);
-  const [activeCC, setActiveCC] = useState<string>('off'); // 'off' | lang code
+  const [pulse, setPulse] = useState<'play' | 'pause' | null>(null);
+
+  // Right-cluster menus.
+  const [nextOpen, setNextOpen] = useState(false);
+  const [trackOpen, setTrackOpen] = useState(false);
+  const [speedOpen, setSpeedOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [activeCC, setActiveCC] = useState<string>('off');
+  const [rate, setRate] = useState(1);
   const [levels, setLevels] = useState<Level[]>([]);
-  const [currentLevel, setCurrentLevel] = useState<number>(-1);
+  const [currentLevel, setCurrentLevel] = useState<number>(-1); // actually playing (ABR)
+  const [qualityChoice, setQualityChoice] = useState<number>(-1); // -1 = Auto
+
   const [bufferedPercent, setBufferedPercent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [capBlock, setCapBlock] = useState(false);
@@ -131,12 +142,10 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    // Clean up any prior instance.
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-
     setLoading(true);
 
     if (hlsSrc) {
@@ -146,7 +155,6 @@ export default function VideoPlayer({
           maxBufferLength: 30,
           maxMaxBufferLength: 60,
           backBufferLength: 30,
-          // Conservative startup so users on 3G don't buffer-stall at 1080p.
           startLevel: -1,
           abrEwmaDefaultEstimate: 500_000,
         });
@@ -157,9 +165,7 @@ export default function VideoPlayer({
           setLoading(false);
           void video.play().catch(() => {});
         });
-        hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
-          setCurrentLevel(data.level);
-        });
+        hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => setCurrentLevel(data.level));
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data.fatal) {
             switch (data.type) {
@@ -171,7 +177,6 @@ export default function VideoPlayer({
                 break;
               default:
                 hls.destroy();
-                // Try direct fallback MP4 if present.
                 if (fallbackMp4 && video) video.src = fallbackMp4;
                 break;
             }
@@ -179,7 +184,6 @@ export default function VideoPlayer({
         });
         hlsRef.current = hls;
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS (Safari / iOS).
         video.src = hlsSrc;
         setLoading(false);
       } else if (fallbackMp4) {
@@ -203,14 +207,12 @@ export default function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !trackingTarget) return;
-
     const onLoaded = async () => {
       const pos = await watchSession.getResumePosition();
       if (pos > 5 && pos < (video.duration || Infinity) - 30) {
         video.currentTime = pos;
       }
     };
-
     video.addEventListener('loadedmetadata', onLoaded);
     return () => video.removeEventListener('loadedmetadata', onLoaded);
   }, [trackingTarget, watchSession]);
@@ -226,22 +228,32 @@ export default function VideoPlayer({
     resetControlsTimer();
     return () => {
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
+      if (pulseTimer.current) clearTimeout(pulseTimer.current);
     };
   }, [resetControlsTimer]);
 
-  // ── key bindings ─────────────────────────────────────────────────────────
+  // ── center play/pause pulse ───────────────────────────────────────────────
+  const flashPulse = useCallback((kind: 'play' | 'pause') => {
+    setPulse(kind);
+    if (pulseTimer.current) clearTimeout(pulseTimer.current);
+    pulseTimer.current = setTimeout(() => setPulse(null), 2000);
+  }, []);
+
+  // ── controls ──────────────────────────────────────────────────────────────
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
       v.play().catch(() => {});
       setPaused(false);
+      flashPulse('play');
     } else {
       v.pause();
       setPaused(true);
+      flashPulse('pause');
     }
     resetControlsTimer();
-  }, [resetControlsTimer]);
+  }, [resetControlsTimer, flashPulse]);
 
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
@@ -261,6 +273,12 @@ export default function VideoPlayer({
     [resetControlsTimer],
   );
 
+  const setSpeed = useCallback((r: number) => {
+    const v = videoRef.current;
+    if (v) v.playbackRate = r;
+    setRate(r);
+  }, []);
+
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
     const video = videoRef.current as
@@ -268,15 +286,10 @@ export default function VideoPlayer({
       | null;
     if (!document.fullscreenElement) {
       try {
-        // Fullscreen the whole player container so our custom controls stay on
-        // top. requestFullscreen() escapes the hub iframe (the iframe grants
-        // allow="fullscreen"), so the BirgenAI header disappears too — true
-        // Netflix-style. iOS Safari can't fullscreen a div, so fall back to the
-        // native video element fullscreen.
         if (container?.requestFullscreen) await container.requestFullscreen();
         else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen();
       } catch {
-        /* user gesture required in some browsers */
+        /* needs a user gesture in some browsers */
       }
     } else {
       await document.exitFullscreen().catch(() => {});
@@ -296,23 +309,20 @@ export default function VideoPlayer({
       else if (e.key === ' ') {
         e.preventDefault();
         togglePlay();
-      } else if (e.key === 'ArrowRight') skip(15);
-      else if (e.key === 'ArrowLeft') skip(-15);
+      } else if (e.key === 'ArrowRight') skip(10);
+      else if (e.key === 'ArrowLeft') skip(-10);
       else if (e.key === 'm' || e.key === 'M') toggleMute();
       else if (e.key === 'f' || e.key === 'F') void toggleFullscreen();
-      else if ((e.key === 'n' || e.key === 'N') && onNext) onNext();
-      else if ((e.key === 'p' || e.key === 'P') && onPrev) onPrev();
+      else if ((e.key === 'n' || e.key === 'N') && nextUp) nextUp.onPlay();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [capBlock, onClose, togglePlay, skip, toggleMute, toggleFullscreen, onNext, onPrev]);
+  }, [capBlock, onClose, togglePlay, skip, toggleMute, toggleFullscreen, nextUp]);
 
   // ── progress + screen-time accounting ────────────────────────────────────
   const onTimeUpdate = useCallback(() => {
     const v = videoRef.current;
     if (!v || !isFinite(v.duration)) return;
-
-    // Real progress (ignore scrubs): only count forward deltas <2s as watched time.
     const now = v.currentTime;
     const delta = now - lastTimeRef.current;
     const watchedDelta = delta > 0 && delta < 2 ? delta : 0;
@@ -322,26 +332,14 @@ export default function VideoPlayer({
     setDuration(v.duration);
     setProgress((now / v.duration) * 100);
 
-    // Buffered progress for the translucent ahead-bar.
     if (v.buffered && v.buffered.length > 0) {
       const end = v.buffered.end(v.buffered.length - 1);
       setBufferedPercent((end / v.duration) * 100);
     }
 
-    // Stream progress to the watch session (throttled in the hook).
-    if (trackingTarget) {
-      watchSession.tick(now, v.duration, watchedDelta);
-    }
+    if (trackingTarget) watchSession.tick(now, v.duration, watchedDelta);
 
-    // Screen-time paywall. Only enforce for signed-in free users; premium &
-    // guests are unaffected here (guests get pre-roll ads handled elsewhere).
-    if (
-      enforceScreenTime &&
-      user &&
-      !screenTime.isPremium &&
-      screenTime.isOverCap &&
-      fullMovie
-    ) {
+    if (enforceScreenTime && user && !screenTime.isPremium && screenTime.isOverCap && fullMovie) {
       v.pause();
       setPaused(true);
       setCapBlock(true);
@@ -381,9 +379,7 @@ export default function VideoPlayer({
     }
   }, []);
 
-  // ── subtitles (WebVTT side-loaded tracks) ─────────────────────────────────
-  // Apply the chosen caption track imperatively: the browser exposes the
-  // sideloaded <track>s as video.textTracks; we flip exactly one to 'showing'.
+  // ── subtitles ─────────────────────────────────────────────────────────────
   const applyCaption = useCallback((lang: string) => {
     const v = videoRef.current;
     if (!v) return;
@@ -397,23 +393,22 @@ export default function VideoPlayer({
     (lang: string) => {
       setActiveCC(lang);
       applyCaption(lang);
-      setCcOpen(false);
       resetControlsTimer();
     },
     [applyCaption, resetControlsTimer],
   );
 
-  // Re-assert the active track once the <track> elements have loaded (and when
-  // the source changes), since the browser resets modes on load.
   useEffect(() => {
     applyCaption(activeCC);
   }, [applyCaption, activeCC, subtitles, src]);
+
+  const availableSubLangs = useMemo(() => new Set(subtitles.map((t) => t.lang)), [subtitles]);
 
   // ── render ───────────────────────────────────────────────────────────────
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[200] bg-black"
+      className="fixed inset-0 z-[200] bg-black select-none"
       onMouseMove={resetControlsTimer}
       onTouchStart={resetControlsTimer}
     >
@@ -434,13 +429,7 @@ export default function VideoPlayer({
         onCanPlay={() => setLoading(false)}
       >
         {subtitles.map((t) => (
-          <track
-            key={t.lang}
-            kind="subtitles"
-            srcLang={t.lang}
-            label={t.label}
-            src={t.src}
-          />
+          <track key={t.lang} kind="subtitles" srcLang={t.lang} label={t.label} src={t.src} />
         ))}
       </video>
 
@@ -451,13 +440,22 @@ export default function VideoPlayer({
         </div>
       )}
 
+      {/* Center play/pause pulse */}
+      {pulse && !capBlock && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-24 h-24 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center animate-fade-pulse">
+            {pulse === 'pause' ? (
+              <Pause className="w-12 h-12 text-white fill-white" />
+            ) : (
+              <Play className="w-12 h-12 text-white fill-white ml-1" />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Screen-time paywall */}
       {capBlock && (
-        <ScreenTimePaywall
-          totalSeconds={screenTime.totalSeconds}
-          cap={screenTime.cap}
-          onClose={onClose}
-        />
+        <ScreenTimePaywall totalSeconds={screenTime.totalSeconds} cap={screenTime.cap} onClose={onClose} />
       )}
 
       {/* Controls overlay */}
@@ -486,8 +484,7 @@ export default function VideoPlayer({
           </div>
         </div>
 
-        {/* Center tap area — single tap toggles play, double tap toggles
-            fullscreen (the two single-tap play toggles cancel out). */}
+        {/* Center tap area — click toggles play, double-click toggles fullscreen */}
         <button
           onClick={togglePlay}
           onDoubleClick={() => void toggleFullscreen()}
@@ -507,10 +504,7 @@ export default function VideoPlayer({
             aria-valuenow={Math.round(progress)}
           >
             <div className="relative h-1 group-hover:h-1.5 bg-white/25 rounded-full transition-all overflow-hidden">
-              <div
-                className="absolute inset-y-0 left-0 bg-white/30 rounded-full"
-                style={{ width: `${bufferedPercent}%` }}
-              />
+              <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full" style={{ width: `${bufferedPercent}%` }} />
               <div
                 className="absolute inset-y-0 left-0 bg-birgen-red rounded-full transition-[width] duration-150"
                 style={{ width: `${progress}%` }}
@@ -522,137 +516,321 @@ export default function VideoPlayer({
             </div>
           </div>
 
-          {/* Row */}
-          <div className="flex items-center gap-2 sm:gap-4">
-            <button onClick={togglePlay} className="text-white hover:text-white/80">
-              {paused ? <Play className="w-7 h-7 fill-white" /> : <Pause className="w-7 h-7" />}
+          {/* Controls row */}
+          <div className="flex items-center gap-4 sm:gap-6">
+            {/* Play / Pause */}
+            <button onClick={togglePlay} className="text-white transition-transform hover:scale-110" aria-label={paused ? 'Play' : 'Pause'}>
+              {paused ? <Play className="w-14 h-14 fill-white" /> : <Pause className="w-14 h-14 fill-white" />}
             </button>
-            <button onClick={() => skip(-15)} className="text-white hover:text-white/80" aria-label="Back 15s">
-              <RotateCcw className="w-5 h-5" />
-            </button>
-            <button onClick={() => skip(15)} className="text-white hover:text-white/80" aria-label="Forward 15s">
-              <RotateCw className="w-5 h-5" />
-            </button>
-            <button onClick={toggleMute} className="text-white hover:text-white/80" aria-label={muted ? 'Unmute' : 'Mute'}>
-              {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={muted ? 0 : volume}
-              onChange={handleVolumeChange}
-              className="hidden sm:block w-24 accent-birgen-red"
-              aria-label="Volume"
-            />
-            <span className="text-white/70 text-xs sm:text-sm font-mono tabular-nums">
+
+            {/* Rewind 10 */}
+            <SkipButton seconds={10} dir="back" onClick={() => skip(-10)} />
+            {/* Forward 10 */}
+            <SkipButton seconds={10} dir="fwd" onClick={() => skip(10)} />
+
+            {/* Volume with hover flyout */}
+            <div className="relative group/vol flex items-center">
+              <button onClick={toggleMute} className="text-white transition-transform hover:scale-110" aria-label={muted ? 'Unmute' : 'Mute'}>
+                {muted || volume === 0 ? <VolumeX className="w-12 h-12" /> : <Volume2 className="w-12 h-12" />}
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-3 hidden group-hover/vol:block">
+                <div className="flex items-center justify-center h-28 w-10 rounded-full bg-black/80 border border-white/10 backdrop-blur">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={muted ? 0 : volume}
+                    onChange={handleVolumeChange}
+                    className="w-24 accent-birgen-red -rotate-90"
+                    aria-label="Volume"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Time */}
+            <span className="text-white/80 text-sm sm:text-base font-mono tabular-nums">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
 
-            <div className="flex-1" />
+            {/* Centered title */}
+            <div className="flex-1 hidden md:flex justify-center px-4 min-w-0">
+              <span className="text-white text-xl sm:text-2xl font-bold truncate">{title}</span>
+            </div>
+            <div className="flex-1 md:hidden" />
 
-            {onPrev && (
-              <button onClick={onPrev} className="text-white hover:text-white/80" aria-label="Previous">
-                <SkipBack className="w-5 h-5" />
-              </button>
-            )}
-            {onNext && (
-              <button onClick={onNext} className="text-white hover:text-white/80" aria-label="Next">
-                <SkipForward className="w-5 h-5" />
-              </button>
-            )}
-
-            {subtitles.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => { setCcOpen((s) => !s); setSettingsOpen(false); }}
-                  className={`transition-colors ${activeCC !== 'off' ? 'text-birgen-red' : 'text-white hover:text-white/80'}`}
-                  aria-label="Subtitles"
-                  title="Subtitles"
-                >
-                  <Captions className="w-5 h-5" />
+            {/* Next Movie */}
+            {nextUp && (
+              <div
+                className="relative"
+                onMouseEnter={() => setNextOpen(true)}
+                onMouseLeave={() => setNextOpen(false)}
+              >
+                <button onClick={() => nextUp.onPlay()} className="text-white transition-transform hover:scale-110" aria-label="Next movie">
+                  <SkipForward className="w-12 h-12" />
                 </button>
-                {ccOpen && (
-                  <div className="absolute right-0 bottom-full mb-2 min-w-[180px] rounded-md bg-black/90 border border-white/15 backdrop-blur-sm overflow-hidden shadow-2xl">
-                    <div className="px-3 py-2 text-[11px] uppercase tracking-wider text-white/40 border-b border-white/10">
-                      Subtitles
+                {nextOpen && (
+                  <div className="absolute right-0 bottom-full pb-8 w-[640px] max-w-[92vw]">
+                   <div className="rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-neutral-800 to-neutral-900">
+                    <div className="px-6 py-4 border-b border-white/10">
+                      <h4 className="text-white font-bold text-2xl">Next Movie</h4>
                     </div>
-                    <button
-                      onClick={() => selectCaption('off')}
-                      className="flex items-center justify-between w-full px-3 py-2 text-sm text-white hover:bg-white/10"
-                    >
-                      <span>Off</span>
-                      {activeCC === 'off' && <Check className="w-4 h-4 text-birgen-red" />}
-                    </button>
-                    {subtitles.map((t) => (
+                    <div className="flex gap-5 p-5">
                       <button
-                        key={t.lang}
-                        onClick={() => selectCaption(t.lang)}
-                        className="flex items-center justify-between w-full px-3 py-2 text-sm text-white hover:bg-white/10"
+                        onClick={() => nextUp.onPlay()}
+                        className="relative w-72 shrink-0 aspect-video rounded-lg overflow-hidden group/np"
                       >
-                        <span>{t.label}</span>
-                        {activeCC === t.lang && <Check className="w-4 h-4 text-birgen-red" />}
+                        {nextUp.backdrop && (
+                          <Image src={nextUp.backdrop} alt={nextUp.title} fill className="object-cover" sizes="288px" />
+                        )}
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                          <span className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center transition-transform group-hover/np:scale-110">
+                            <Play className="w-8 h-8 fill-black text-black ml-0.5" />
+                          </span>
+                        </div>
                       </button>
-                    ))}
+                      <div className="min-w-0">
+                        <p className="text-white font-bold text-xl">
+                          {nextUp.title}
+                          {nextUp.year ? <span className="text-white/50 font-normal"> ({nextUp.year})</span> : null}
+                        </p>
+                        {nextUp.overview && (
+                          <p className="text-white/70 text-sm mt-2 leading-relaxed line-clamp-4">{nextUp.overview}</p>
+                        )}
+                      </div>
+                    </div>
+                   </div>
                   </div>
                 )}
               </div>
             )}
 
+            {/* Quality */}
             {levels.length > 0 && (
               <div className="relative">
                 <button
-                  onClick={() => { setSettingsOpen((s) => !s); setCcOpen(false); }}
-                  className="text-white hover:text-white/80"
+                  onClick={() => {
+                    setQualityOpen((s) => !s);
+                    setTrackOpen(false);
+                    setSpeedOpen(false);
+                    setNextOpen(false);
+                  }}
+                  className={`transition-transform hover:scale-110 ${qualityChoice !== -1 ? 'text-birgen-red' : 'text-white'}`}
                   aria-label="Quality"
+                  title="Quality"
                 >
-                  <Settings className="w-5 h-5" />
+                  <Layers className="w-12 h-12" />
                 </button>
-                {settingsOpen && (
-                  <div className="absolute right-0 bottom-full mb-2 min-w-[180px] rounded-md bg-black/90 border border-white/15 backdrop-blur-sm overflow-hidden shadow-2xl">
-                    <div className="px-3 py-2 text-[11px] uppercase tracking-wider text-white/40 border-b border-white/10">
-                      Quality
-                    </div>
+                {qualityOpen && (
+                  <div className="absolute right-0 bottom-full pb-3 w-[260px]">
+                   <div className="rounded-lg overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-neutral-800 to-neutral-900">
+                    <div className="px-4 py-3 text-white font-bold text-lg border-b border-white/10">Quality</div>
                     <button
                       onClick={() => {
                         if (hlsRef.current) hlsRef.current.currentLevel = -1;
-                        setSettingsOpen(false);
+                        setQualityChoice(-1);
+                        setQualityOpen(false);
                       }}
-                      className="flex items-center justify-between w-full px-3 py-2 text-sm text-white hover:bg-white/10"
+                      className="flex items-center justify-between w-full px-4 py-2.5 text-sm text-white hover:bg-white/10"
                     >
-                      <span>Auto</span>
-                      {currentLevel === -1 && <Check className="w-4 h-4 text-birgen-red" />}
+                      <span>
+                        Auto
+                        {currentLevel !== -1 && levels[currentLevel]
+                          ? ` (${levels[currentLevel].height}p)`
+                          : ''}
+                      </span>
+                      {qualityChoice === -1 && <Check className="w-4 h-4 text-birgen-red" />}
                     </button>
                     {levels.map((lvl, i) => (
                       <button
                         key={i}
                         onClick={() => {
                           if (hlsRef.current) hlsRef.current.currentLevel = i;
-                          setSettingsOpen(false);
+                          setQualityChoice(i);
+                          setQualityOpen(false);
                         }}
-                        className="flex items-center justify-between w-full px-3 py-2 text-sm text-white hover:bg-white/10"
+                        className="flex items-center justify-between w-full px-4 py-2.5 text-sm text-white hover:bg-white/10"
                       >
                         <span>{lvl.height}p</span>
-                        {currentLevel === i && <Check className="w-4 h-4 text-birgen-red" />}
+                        {qualityChoice === i && <Check className="w-4 h-4 text-birgen-red" />}
                       </button>
                     ))}
+                   </div>
                   </div>
                 )}
               </div>
             )}
 
+            {/* Audio & Subtitles */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setTrackOpen((s) => !s);
+                  setSpeedOpen(false);
+                  setNextOpen(false);
+                  setQualityOpen(false);
+                }}
+                className={`transition-transform hover:scale-110 ${activeCC !== 'off' ? 'text-birgen-red' : 'text-white'}`}
+                aria-label="Audio and subtitles"
+                title="Audio and Subtitles"
+              >
+                <Captions className="w-12 h-12" />
+              </button>
+              {trackOpen && (
+                <div className="absolute right-0 bottom-full mb-3 w-[480px] max-w-[90vw] rounded-lg overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-neutral-800 to-neutral-900">
+                  <div className="grid grid-cols-2 max-h-[360px] overflow-y-auto">
+                    {/* Audio */}
+                    <div className="border-r border-white/10">
+                      <div className="px-4 py-3 text-white font-bold text-lg sticky top-0 bg-neutral-800/95 backdrop-blur">Audio</div>
+                      {AUDIO_TRACKS.map((a) => (
+                        <button
+                          key={a.code}
+                          disabled={!a.enabled}
+                          className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm text-left ${
+                            a.enabled ? 'text-white hover:bg-white/10' : 'text-white/35 cursor-not-allowed'
+                          }`}
+                          title={a.enabled ? undefined : 'Coming soon'}
+                        >
+                          {a.enabled ? <Check className="w-4 h-4 text-white" /> : <Lock className="w-3.5 h-3.5" />}
+                          <span>{a.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* Subtitles */}
+                    <div>
+                      <div className="px-4 py-3 text-white font-bold text-lg sticky top-0 bg-neutral-800/95 backdrop-blur">Subtitles</div>
+                      <button
+                        onClick={() => selectCaption('off')}
+                        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-left text-white hover:bg-white/10"
+                      >
+                        {activeCC === 'off' ? <Check className="w-4 h-4" /> : <span className="w-4" />}
+                        <span>Off</span>
+                      </button>
+                      {SUPPORTED_SUBTITLE_LANGS.map((s) => {
+                        const ready = availableSubLangs.has(s.code);
+                        return (
+                          <button
+                            key={s.code}
+                            onClick={() => (ready ? selectCaption(s.code) : undefined)}
+                            disabled={!ready}
+                            className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm text-left ${
+                              ready ? 'text-white hover:bg-white/10' : 'text-white/45 cursor-not-allowed'
+                            }`}
+                            title={ready ? undefined : 'Coming soon'}
+                          >
+                            {activeCC === s.code ? <Check className="w-4 h-4" /> : <span className="w-4" />}
+                            <span>{s.label}</span>
+                            {!ready && <span className="ml-auto text-[10px] uppercase tracking-wide text-white/30">soon</span>}
+                          </button>
+                        );
+                      })}
+                      <div className="my-1 border-t border-white/10" />
+                      {LOCKED_SUBTITLE_LANGS.map((label) => (
+                        <button
+                          key={label}
+                          disabled
+                          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-left text-white/35 cursor-not-allowed"
+                          title="Coming soon"
+                        >
+                          <span className="w-4" />
+                          <span>{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Playback speed */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setSpeedOpen((s) => !s);
+                  setTrackOpen(false);
+                  setNextOpen(false);
+                  setQualityOpen(false);
+                }}
+                className={`transition-transform hover:scale-110 ${rate !== 1 ? 'text-birgen-red' : 'text-white'}`}
+                aria-label="Playback speed"
+                title="Playback speed"
+              >
+                <Gauge className="w-12 h-12" />
+              </button>
+              {speedOpen && (
+                <div className="absolute right-0 bottom-full mb-3 w-[320px] rounded-lg overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-neutral-800 to-neutral-900 p-4">
+                  <h4 className="text-white font-bold text-base mb-4">Playback Speed</h4>
+                  <div className="relative flex items-center justify-between">
+                    <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-white/25" />
+                    {PLAYBACK_SPEEDS.map((sp) => (
+                      <button
+                        key={sp}
+                        onClick={() => setSpeed(sp)}
+                        className="relative flex flex-col items-center gap-2"
+                      >
+                        <span
+                          className={`w-3.5 h-3.5 rounded-full border-2 transition-all ${
+                            rate === sp ? 'bg-white border-white ring-4 ring-white/30 scale-110' : 'bg-neutral-600 border-neutral-500'
+                          }`}
+                        />
+                        <span className={`text-[11px] whitespace-nowrap ${rate === sp ? 'text-white font-bold' : 'text-white/55'}`}>
+                          {sp === 1 ? '1x (Normal)' : `${sp}x`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Fullscreen */}
             <button
               onClick={toggleFullscreen}
-              className="text-white hover:text-white/80"
+              className="text-white transition-transform hover:scale-110"
               aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
-              {fullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+              {fullscreen ? <Minimize className="w-12 h-12" /> : <Maximize className="w-12 h-12" />}
             </button>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Circular rewind/forward button with the seconds rendered inside the ring. */
+function SkipButton({
+  seconds,
+  dir,
+  onClick,
+}: {
+  seconds: number;
+  dir: 'back' | 'fwd';
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="relative text-white transition-transform hover:scale-110"
+      aria-label={dir === 'back' ? `Rewind ${seconds} seconds` : `Forward ${seconds} seconds`}
+    >
+      {/* circular arrow drawn with an SVG so the number sits cleanly inside */}
+      <svg viewBox="0 0 24 24" className="w-14 h-14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        {dir === 'back' ? (
+          <>
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+            <path d="M3 4v4h4" />
+          </>
+        ) : (
+          <>
+            <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+            <path d="M21 4v4h-4" />
+          </>
+        )}
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[15px] font-bold mt-[5px]">{seconds}</span>
+    </button>
   );
 }
 
@@ -685,16 +863,11 @@ function ScreenTimePaywall({
           >
             Go Premium — unlimited watching
           </a>
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 text-birgen-muted hover:text-white text-sm transition-colors"
-          >
+          <button onClick={onClose} className="w-full py-2.5 text-birgen-muted hover:text-white text-sm transition-colors">
             Not now
           </button>
         </div>
-        <p className="text-[11px] text-birgen-muted mt-5">
-          Free tier · {capHours} h / month · Resets on the 1st
-        </p>
+        <p className="text-[11px] text-birgen-muted mt-5">Free tier · {capHours} h / month · Resets on the 1st</p>
       </div>
     </div>
   );

@@ -685,6 +685,9 @@ export default function HeroBanner() {
         const src = getStreamUrl(m.movieId) || m.video;
         const slug = getSlugForMovieId(m.movieId);
         const poster = (slug && getKenyanPosterUrl(slug)) || m.backdrop;
+        // Next recommended = next featured movie (same order as Top 5), wrapping.
+        const nextIdx = (playerStartIdx + 1) % FEATURED_MOVIES.length;
+        const nm = FEATURED_MOVIES[nextIdx];
         return (
           <VideoPlayer
             src={src}
@@ -695,12 +698,18 @@ export default function HeroBanner() {
             fullMovie
             target={slug ? { movieSlug: slug } : { movieId: m.movieId }}
             onClose={handleClosePlayer}
-            onNext={() => {
-              setPlayerStartIdx((i) => (i + 1) % FEATURED_MOVIES.length);
-            }}
-            onPrev={() => {
-              setPlayerStartIdx((i) => (i - 1 + FEATURED_MOVIES.length) % FEATURED_MOVIES.length);
-            }}
+            onEnded={() => setPlayerStartIdx(nextIdx)}
+            nextUp={
+              nm && nm.movieId !== m.movieId
+                ? {
+                    title: nm.title,
+                    year: nm.year,
+                    overview: nm.overview,
+                    backdrop: nm.backdrop,
+                    onPlay: () => setPlayerStartIdx(nextIdx),
+                  }
+                : null
+            }
           />
         );
       })()}

@@ -28,6 +28,8 @@ import toast from 'react-hot-toast';
 import AuthModal from '@/components/AuthModal';
 import { useAuth } from '@/components/AuthProvider';
 import { announceMediaPlay } from '@/lib/mediaBus';
+import FullMoviePlayer from '@/components/FullMoviePlayer';
+import { getPlayableByMovieId } from '@/lib/playableMovies';
 
 /* ── The 5 featured movies with MovieLens IDs ─────────── */
 interface Top5Movie {
@@ -686,8 +688,17 @@ export default function Top5Kenya() {
     streamMode: boolean;
   }>({ open: false, startIndex: 0, streamMode: false });
   const [pendingPlayIdx, setPendingPlayIdx] = useState<number | null>(null);
+  // The unified full-movie player (Netflix-grade VideoPlayer) plays by slug.
+  const [moviePlayerSlug, setMoviePlayerSlug] = useState<string | null>(null);
   const hoverTimeout = useRef<NodeJS.Timeout>();
   const { user } = useAuth();
+
+  const playFullMovie = (idx: number) => {
+    const movie = TOP5_MOVIES[idx];
+    const slug = movie ? getPlayableByMovieId(movie.movieId)?.slug ?? null : null;
+    if (slug) setMoviePlayerSlug(slug);
+    else setTrailerPlayer({ open: true, startIndex: idx, streamMode: true }); // fallback
+  };
 
   const handleMouseEnter = (idx: number) => {
     clearTimeout(hoverTimeout.current);
@@ -730,7 +741,8 @@ export default function Top5Kenya() {
     setTrailerPlayer({ open: true, startIndex: idx, streamMode: false });
   };
 
-  // Play Movie — plays the full HLS stream (resume + screen-time). Auth-gated.
+  // Play Movie — opens the unified Netflix-grade player (resume + screen-time).
+  // Auth-gated for streamable titles.
   const openMovie = (idx: number) => {
     setInfoMovie(null);
     const movie = TOP5_MOVIES[idx];
@@ -738,7 +750,7 @@ export default function Top5Kenya() {
       setPendingPlayIdx(idx);
       return;
     }
-    setTrailerPlayer({ open: true, startIndex: idx, streamMode: true });
+    playFullMovie(idx);
   };
 
   return (
@@ -871,6 +883,15 @@ export default function Top5Kenya() {
         />
       )}
 
+      {/* Unified Netflix-grade full-movie player */}
+      {moviePlayerSlug && (
+        <FullMoviePlayer
+          slug={moviePlayerSlug}
+          onClose={() => setMoviePlayerSlug(null)}
+          onChangeSlug={(s) => setMoviePlayerSlug(s)}
+        />
+      )}
+
       {/* Auth gate before full-movie streaming */}
       {pendingPlayIdx !== null && (
         <AuthModal
@@ -880,7 +901,7 @@ export default function Top5Kenya() {
           onContinueGuest={() => {
             const idx = pendingPlayIdx;
             setPendingPlayIdx(null);
-            setTrailerPlayer({ open: true, startIndex: idx, streamMode: true });
+            playFullMovie(idx);
           }}
         />
       )}
