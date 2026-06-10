@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import HeroBanner from '@/components/HeroBanner';
+import FeaturedHDRow from '@/components/FeaturedHDRow';
 import Top5Kenya from '@/components/Top5Kenya';
 import ScreenTimeBanner from '@/components/ScreenTimeBanner';
 import HomeClient from './HomeClient';
@@ -12,6 +13,8 @@ export default function HomePage() {
       <Navbar />
       <ScreenTimeBanner />
       <HeroBanner />
+      {/* Top content row: freshly added full-HD titles, ABOVE the lower-res Top 5. */}
+      <FeaturedHDRow />
       <Top5Kenya />
       <Suspense fallback={null}>
         <HomeClient />

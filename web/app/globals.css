@@ -188,6 +188,17 @@ body {
   filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
 }
 
+/* Subtitles (native <track> cues) — Netflix-style: no box, crisp white with a soft
+   shadow so it stays legible over any frame. Vertical position is nudged off the bottom
+   control bar from VideoPlayer via each cue's `line`. */
+video::cue {
+  background: transparent;
+  color: #fff;
+  font-size: clamp(0.95rem, 2.4vw, 1.6rem);
+  line-height: 1.3;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
 /* Generic animations */
 @keyframes fadeIn {
   from { opacity: 0; }

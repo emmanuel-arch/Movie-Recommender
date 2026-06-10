@@ -66,7 +66,7 @@ export default function MovieCarousel({
   return (
     <section className="relative py-4 group/carousel">
       {/* Header */}
-      <div className="flex items-end justify-between mb-3 px-4 sm:px-6 lg:px-12">
+      <div className="flex items-end justify-between mb-3 px-4 sm:px-6 lg:px-8">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-lg sm:text-xl font-bold text-white">{title}</h2>
@@ -77,6 +77,9 @@ export default function MovieCarousel({
           )}
         </div>
       </div>
+
+      {/* Red accent line — matches the Top 5 section */}
+      <div className="h-px bg-gradient-to-r from-birgen-red via-birgen-red/30 to-transparent mx-4 sm:mx-6 lg:mx-8 mb-4" />
 
       {/* Scroll wrapper */}
       <div className="relative">
@@ -102,20 +105,21 @@ export default function MovieCarousel({
           </button>
         )}
 
-        {/* Scroll container — landscape grid items */}
+        {/* Scroll container — exact 2-up (mobile) / 3-up (tablet) / 5-up (desktop),
+            matching the Top 5 grid so every row across the site is identical. */}
         <div
           ref={scrollRef}
-          className="flex gap-2 overflow-x-auto scrollbar-hide px-4 sm:px-6 lg:px-12 scroll-smooth"
+          className="flex gap-3 overflow-x-auto scrollbar-hide px-4 sm:px-6 lg:px-8 scroll-smooth"
           style={{ scrollbarWidth: 'none' }}
         >
           {loading
             ? Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="flex-shrink-0 w-[48%] sm:w-[31%] md:w-[23%] lg:w-[19%]">
+                <div key={i} className="flex-shrink-0 w-[calc((100%-0.75rem)/2)] sm:w-[calc((100%-1.5rem)/3)] md:w-[calc((100%-3rem)/5)]">
                   <MovieCardSkeleton />
                 </div>
               ))
             : movies.map((movie) => (
-                <div key={movie.movieId} className="flex-shrink-0 w-[48%] sm:w-[31%] md:w-[23%] lg:w-[19%]">
+                <div key={movie.movieId} className="flex-shrink-0 w-[calc((100%-0.75rem)/2)] sm:w-[calc((100%-1.5rem)/3)] md:w-[calc((100%-3rem)/5)]">
                   <MovieCard
                     movie={movie}
                     userRating={userRatings?.get(movie.movieId)}

@@ -22,6 +22,8 @@ export interface CatalogEntry {
   genres: string[];
   playable: boolean;
   comingSoon: boolean;
+  /** Freshly added full-HD (1080p) titles — drives the top "Now Streaming in HD" row. */
+  hdFeatured?: boolean;
   kenyanOriginal: boolean;
   panAfrican: boolean;
   darkPsychological: boolean;
@@ -37,6 +39,8 @@ export interface CatalogEntry {
   media?: {
     poster?: string;
     backdrop?: string;
+    /** Cinematic 16:9 card art with the title baked in (Netflix-style). */
+    card?: string;
     hero?: string;
     logo?: string;
     trailer?: string;
@@ -51,7 +55,23 @@ export function catalogPosterPath(e: CatalogEntry): string {
 }
 
 export function catalogBackdropPath(e: CatalogEntry): string {
-  return e.media?.backdrop ?? assetUrl(`/Images/backdrops/backdrop-${e.assetKey}.jpg`);
+  if (e.media?.backdrop) return e.media.backdrop;
+  // "Now Streaming in HD" titles ship only cinematic card art — their backdrop was
+  // intentionally retired. Resolve their backdrop to the card art so nothing ever
+  // requests a missing /Images/backdrops/ file (no 404s in popups, next-up, etc.).
+  if (e.hdFeatured) return catalogCardPath(e);
+  return assetUrl(`/Images/backdrops/backdrop-${e.assetKey}.jpg`);
+}
+
+/**
+ * Cinematic card art with the movie title composited in (Netflix-style), 16:9.
+ * Lives in a separate folder so the title-less backdrops keep serving info popups,
+ * the hero, and non-playable cards. The card components fall back to the backdrop
+ * (and re-enable the code-drawn title) if this file 404s, so it is safe to reference
+ * before the art is uploaded.
+ */
+export function catalogCardPath(e: CatalogEntry): string {
+  return e.media?.card ?? assetUrl(`/Images/cards/card-${e.assetKey}.jpg`);
 }
 
 export function catalogHeroPath(e: CatalogEntry): string {
@@ -91,6 +111,11 @@ export function toMovie(e: CatalogEntry): Movie {
     avg_rating: e.tmdbVoteAverage,
     poster_url: catalogPosterPath(e),
     backdrop_url: catalogBackdropPath(e),
+    // Cinematic card art (title baked in) exists for playable launch titles AND every
+    // "Now Streaming in HD" title — even the ones still pending upload, since their art is
+    // already in Images/cards/ while their backdrop is intentionally absent. Everything else
+    // has no card art and uses the backdrop + code-drawn title.
+    card_url: e.playable || e.hdFeatured ? catalogCardPath(e) : null,
     // Only the playable launch titles have trailer assets in R2.
     trailer_url: e.playable ? catalogTrailerPath(e) : null,
     year: String(e.year),
@@ -110,6 +135,13 @@ export function getCatalogEntryBySlug(slug: string): CatalogEntry | undefined {
 export function getCatalogPosterUrlForSlug(slug: string): string | null {
   const e = getCatalogEntryBySlug(slug);
   return e ? catalogPosterPath(e) : null;
+}
+
+/** Freshly added full-HD titles for the top "Now Streaming in HD" row, newest first. */
+export function hdFeaturedEntries(): CatalogEntry[] {
+  return CATALOG.filter((c) => c.hdFeatured).sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
 }
 
 export function similarCatalogEntries(entry: CatalogEntry, n = 6): CatalogEntry[] {
@@ -238,6 +270,148 @@ export const CATALOG: CatalogEntry[] = [
     director: 'Martin Scorsese',
     tagline: 'Paranoia you can’t shake',
     createdAt: '2026-01-12T12:00:00.000Z',
+  }),
+  // ── Now Streaming in HD — freshly added 1080p titles ───────────
+  // NOTE: `slug` MUST equal the R2 folder name (Videos/films/<slug>/master.m3u8).
+  // Flip `playable` to true the moment a title's HLS finishes uploading. Metadata
+  // (cast/director/runtime/rating) is a best-effort first pass — verify & refine.
+  sec('Now Streaming in HD', {
+    movieId: 91000506,
+    slug: 'candy-jar-2018',
+    assetKey: 'candy-jar-2018',
+    displayTitle: 'Candy Jar',
+    year: 2018,
+    runtimeMinutes: 93,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 6.0,
+    overview:
+      'Two hyper-competitive high-school debate rivals are pushed together on the road to nationals, and discover there is more to each other than winning.',
+    genres: ['Drama', 'Comedy'],
+    playable: true, // uploaded + verified live in R2
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Sami Gayle', 'Jacob Latimore', 'Helen Hunt', 'Christina Hendricks'],
+    director: 'Ben Shelton',
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-09T12:00:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000501,
+    slug: 'fast-x-2023',
+    assetKey: 'fast-x-2023',
+    displayTitle: 'Fast X',
+    year: 2023,
+    runtimeMinutes: 141,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 7.0,
+    overview:
+      "Dom Toretto and his family face their most lethal opponent yet: a vengeful adversary out to shatter everything — and everyone — Dom loves.",
+    genres: ['Action', 'Crime', 'Thriller'],
+    playable: true, // uploaded + verified live in R2
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Vin Diesel', 'Jason Momoa', 'Michelle Rodriguez'],
+    director: 'Louis Leterrier',
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-09T12:05:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000502,
+    slug: 'the-man-from-toronto-2022',
+    assetKey: 'the-man-from-toronto-2022',
+    displayTitle: 'The Man from Toronto',
+    year: 2022,
+    runtimeMinutes: 112,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 6.3,
+    overview:
+      'A case of mistaken identity throws a hapless screw-up together with the world\'s deadliest assassin, known only as the Man from Toronto.',
+    genres: ['Action', 'Comedy'],
+    playable: true, // uploaded + verified live in R2
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Kevin Hart', 'Woody Harrelson', 'Kaley Cuoco'],
+    director: 'Patrick Hughes',
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-09T12:10:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000503,
+    slug: 'rush-2013',
+    assetKey: 'rush-2013',
+    displayTitle: 'Rush',
+    year: 2013,
+    runtimeMinutes: 123,
+    maturity: 'R',
+    tmdbVoteAverage: 8.1,
+    overview:
+      'The blazing 1970s Formula 1 rivalry between charismatic Briton James Hunt and the methodical Austrian Niki Lauda pushes both men to the edge.',
+    genres: ['Drama', 'Action', 'Sport'],
+    playable: true, // uploaded + verified live in R2
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Chris Hemsworth', 'Daniel Brühl', 'Olivia Wilde'],
+    director: 'Ron Howard',
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-09T12:15:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000504,
+    slug: 'deadpool-2016',
+    assetKey: 'deadpool-2016',
+    displayTitle: 'Deadpool',
+    year: 2016,
+    runtimeMinutes: 108,
+    maturity: 'R',
+    tmdbVoteAverage: 7.6,
+    overview:
+      'A wisecracking mercenary, disfigured and left with accelerated healing, hunts the man who wrecked his life — in the most foul-mouthed way possible.',
+    genres: ['Action', 'Comedy', 'Sci-Fi'],
+    playable: true, // uploaded + verified live in R2
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Ryan Reynolds', 'Morena Baccarin', 'T.J. Miller'],
+    director: 'Tim Miller',
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-09T12:20:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000505,
+    slug: 'mission-impossible-rogue-nation-2015',
+    assetKey: 'mission-impossible-rogue-nation-2015',
+    displayTitle: 'Mission: Impossible — Rogue Nation',
+    year: 2015,
+    runtimeMinutes: 131,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 7.4,
+    overview:
+      'Ethan Hunt and the IMF take on the Syndicate, a shadow network of rogue operatives bent on dismantling them and destabilising the world.',
+    genres: ['Action', 'Adventure', 'Thriller'],
+    playable: true, // uploaded + verified live in R2
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Tom Cruise', 'Rebecca Ferguson', 'Simon Pegg'],
+    director: 'Christopher McQuarrie',
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-09T12:25:00.000Z',
   }),
   // ── Kenyan & East African originals / priority ─────────────────
   sec('Kenyan originals', {

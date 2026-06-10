@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Movie } from '@/types';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { useCardArt } from '@/hooks/useCardArt';
 import { announceMediaPlay } from '@/lib/mediaBus';
 import FullMoviePlayer from '@/components/FullMoviePlayer';
 import { getPlayableBySlug } from '@/lib/playableMovies';
@@ -42,7 +43,20 @@ export default function MovieCard({
   const genres = movie.genres?.split('|').slice(0, 2) || [];
   const rated = userRating !== undefined && userRating > 0;
   const displayTitle = movie.title.replace(/\s*\(\d{4}\)\s*$/, '');
-  const imageUrl = movie.backdrop_url || movie.poster_url;
+  // Playable titles use cinematic art with the title baked in; everything else uses the
+  // title-less backdrop + a code-drawn title. `showTitle` also covers the pre-upload 404 fallback.
+  const { src: imageUrl, showTitle, onError } = useCardArt(
+    movie.card_url,
+    movie.backdrop_url,
+    movie.poster_url,
+  );
+  // Popups prefer the clean, title-less backdrop — but HD titles intentionally have no
+  // backdrop, so fall back to the card art (then poster) instead of showing a broken image.
+  const { src: popupImage, onError: onPopupError } = useCardArt(
+    movie.backdrop_url,
+    movie.card_url,
+    movie.poster_url,
+  );
   const hasTrailer = !!movie.trailer_url;
 
   const handleRate = (rating: number) => {
@@ -60,7 +74,7 @@ export default function MovieCard({
         {/* Landscape card — click opens the info popup */}
         <div
           onClick={() => setShowInfo(true)}
-          className={`relative aspect-[16/10] rounded-md overflow-hidden bg-birgen-card transition-all duration-300 ${
+          className={`relative aspect-video rounded-md overflow-hidden bg-birgen-card transition-all duration-300 ${
             hovered ? 'scale-105 z-20 shadow-2xl shadow-black/80 ring-1 ring-white/10' : 'z-10'
           }`}
         >
@@ -69,9 +83,10 @@ export default function MovieCard({
               src={imageUrl}
               alt={movie.title}
               fill
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 20vw"
               className="object-cover"
               loading="lazy"
+              onError={onError}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-birgen-card to-birgen-dark">
@@ -81,8 +96,10 @@ export default function MovieCard({
             </div>
           )}
 
-          {/* Bottom gradient */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none z-[2]" />
+          {/* Bottom gradient — only needed under a code-drawn title (baked-in art needs none) */}
+          {showTitle && (
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none z-[2]" />
+          )}
 
           {movie.comingSoon && (
             <div className="absolute top-1.5 left-1.5 z-[11] px-1.5 py-0.5 rounded bg-black/70 border border-white/15 text-[9px] font-bold uppercase tracking-wider text-white/95">
@@ -114,20 +131,22 @@ export default function MovieCard({
             </div>
           )}
 
-          {/* Bottom info */}
-          <div className="absolute bottom-1.5 left-2 right-2 z-[3] pointer-events-none">
-            <p className="text-white text-xs sm:text-sm font-medium leading-tight drop-shadow-lg line-clamp-1">
-              {displayTitle}
-            </p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {movie.year && (
-                <span className="text-white/50 text-[10px]">{movie.year}</span>
-              )}
-              {genres.length > 0 && (
-                <span className="text-white/40 text-[10px]">{genres.join(' · ')}</span>
-              )}
+          {/* Bottom info — drawn only when there's no baked-in cinematic title */}
+          {showTitle && (
+            <div className="absolute bottom-1.5 left-2 right-2 z-[3] pointer-events-none">
+              <p className="text-white text-xs sm:text-sm font-medium leading-tight drop-shadow-lg line-clamp-1">
+                {displayTitle}
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {movie.year && (
+                  <span className="text-white/50 text-[10px]">{movie.year}</span>
+                )}
+                {genres.length > 0 && (
+                  <span className="text-white/40 text-[10px]">{genres.join(' · ')}</span>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Hover play overlay — single white play button opens the popup */}
           <div
@@ -152,9 +171,9 @@ export default function MovieCard({
             className="relative w-full max-w-sm mx-4 rounded-xl overflow-hidden bg-birgen-dark border border-birgen-border shadow-2xl animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            {imageUrl && (
+            {popupImage && (
               <div className="relative h-36">
-                <Image src={imageUrl} alt={displayTitle} fill className="object-cover" sizes="400px" />
+                <Image src={popupImage} alt={displayTitle} fill className="object-cover" sizes="400px" onError={onPopupError} />
                 <div className="absolute inset-0 bg-gradient-to-t from-birgen-dark via-birgen-dark/50 to-transparent" />
               </div>
             )}
@@ -206,9 +225,9 @@ export default function MovieCard({
             className="relative w-full max-w-lg mx-4 rounded-xl overflow-hidden bg-birgen-dark border border-birgen-border shadow-2xl animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            {imageUrl && (
+            {popupImage && (
               <div className="relative h-52">
-                <Image src={imageUrl} alt={displayTitle} fill className="object-cover" sizes="544px" />
+                <Image src={popupImage} alt={displayTitle} fill className="object-cover" sizes="544px" onError={onPopupError} />
                 <div className="absolute inset-0 bg-gradient-to-t from-birgen-dark via-transparent to-transparent" />
                 <button
                   onClick={() => setShowInfo(false)}
@@ -559,7 +578,7 @@ function StreamPlayer({
 export function MovieCardSkeleton() {
   return (
     <div>
-      <div className="aspect-[16/10] rounded-md shimmer" />
+      <div className="aspect-video rounded-md shimmer" />
     </div>
   );
 }

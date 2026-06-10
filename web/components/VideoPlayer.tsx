@@ -402,6 +402,35 @@ export default function VideoPlayer({
     applyCaption(activeCC);
   }, [applyCaption, activeCC, subtitles, src]);
 
+  // Keep subtitles clear of the bottom control bar: lift them up while the controls are
+  // visible, drop them back toward the bottom edge once the controls fade. A negative cue
+  // `line` counts rows from the bottom (-1 = bottom-most), so a larger negative lifts higher.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const lift = showControls ? -4 : -2;
+    const position = () => {
+      const tracks = v.textTracks;
+      for (let i = 0; i < tracks.length; i++) {
+        const tr = tracks[i];
+        if (tr.mode !== 'showing' || !tr.activeCues) continue;
+        for (let j = 0; j < tr.activeCues.length; j++) {
+          const cue = tr.activeCues[j] as VTTCue;
+          cue.snapToLines = true;
+          cue.line = lift;
+        }
+      }
+    };
+    position();
+    const tracks = v.textTracks;
+    const handlers: Array<[TextTrack, () => void]> = [];
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].addEventListener('cuechange', position);
+      handlers.push([tracks[i], position]);
+    }
+    return () => handlers.forEach(([tr, h]) => tr.removeEventListener('cuechange', h));
+  }, [showControls, activeCC, subtitles, src]);
+
   const availableSubLangs = useMemo(() => new Set(subtitles.map((t) => t.lang)), [subtitles]);
 
   // ── render ───────────────────────────────────────────────────────────────
@@ -412,11 +441,19 @@ export default function VideoPlayer({
       onMouseMove={resetControlsTimer}
       onTouchStart={resetControlsTimer}
     >
+      {/*
+        crossOrigin="anonymous" is required for the cross-origin <track> VTTs below
+        (subtitles live on assets.birgenai.com). Without CORS mode the browser silently
+        refuses to fetch the cue file even when the response carries text/vtt +
+        Access-Control-Allow-Origin. hls.js uses its own loader, so this does not affect
+        segment playback.
+      */}
       <video
         ref={videoRef}
         className="w-full h-full object-contain"
         autoPlay
         playsInline
+        crossOrigin="anonymous"
         poster={poster ?? undefined}
         onTimeUpdate={onTimeUpdate}
         onEnded={handleEnded}

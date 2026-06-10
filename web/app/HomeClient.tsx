@@ -93,6 +93,22 @@ export default function HomeClient() {
     [],
   );
 
+  // Genre rows — let each HD title also live in a genre-coherent row. The action
+  // tentpoles land here; Candy Jar (Drama/Comedy) is excluded and surfaces in feel-good.
+  const actionAdventure = useMemo(
+    () =>
+      CATALOG.filter((c) => c.genres.some((g) => g === 'Action' || g === 'Adventure')).map(
+        toMovie,
+      ),
+    [],
+  );
+
+  const feelGood = useMemo(
+    () =>
+      CATALOG.filter((c) => c.genres.some((g) => g === 'Comedy' || g === 'Family')).map(toMovie),
+    [],
+  );
+
   const becauseSeed = ratedMovies[ratedMovies.length - 1]?.movie;
   const becauseEntry = becauseSeed
     ? CATALOG.find((c) => c.movieId === becauseSeed.movieId) ||
@@ -152,6 +168,13 @@ export default function HomeClient() {
       />
 
       <MovieCarousel
+        title="Action & adventure"
+        subtitle="High-octane tentpoles — chases, heists, and impossible odds"
+        movies={actionAdventure}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
         title="Dark & psychological"
         subtitle="High stakes, moral grey zones, cinematic shadows"
         movies={darkPsych}
@@ -162,6 +185,13 @@ export default function HomeClient() {
         title="African stories"
         subtitle="Nollywood · South Africa · East Africa · pan-African voices"
         movies={africanStories}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
+        title="Feel-good favourites"
+        subtitle="Lighter, warmer, funnier — easy watches for any night"
+        movies={feelGood}
         {...carouselProps}
       />
 

@@ -23,6 +23,7 @@ import { useRatings } from '@/hooks/useRatings';
 import { useMyList } from '@/hooks/useMyList';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { useCardArt } from '@/hooks/useCardArt';
 import { assetUrl } from '@/lib/assets';
 import toast from 'react-hot-toast';
 import AuthModal from '@/components/AuthModal';
@@ -45,6 +46,8 @@ interface Top5Movie {
   genreList: string[];
   poster: string;
   backdrop: string;
+  /** Cinematic 16:9 art with the title baked in; falls back to backdrop until uploaded. */
+  card: string;
   trailer: string;
 }
 
@@ -63,6 +66,7 @@ const TOP5_MOVIES: Top5Movie[] = [
     genreList: ['Horror', 'Thriller', 'Mystery'],
     poster: assetUrl('/Images/posters/poster-get-out-2017.jpg'),
     backdrop: assetUrl('/Images/backdrops/backdrop-get-out-2017.jpg'),
+    card: assetUrl('/Images/cards/card-get-out-2017.jpg'),
     trailer: assetUrl('/Videos/trailers/trailer-get-out-2017.mp4'),
   },
   {
@@ -79,6 +83,7 @@ const TOP5_MOVIES: Top5Movie[] = [
     genreList: ['Action', 'Crime', 'Drama'],
     poster: assetUrl('/Images/posters/poster-sicario-2015.jpg'),
     backdrop: assetUrl('/Images/backdrops/backdrop-sicario-2015.jpg'),
+    card: assetUrl('/Images/cards/card-sicario-2015.jpg'),
     trailer: assetUrl('/Videos/trailers/trailer-sicario-2015.mp4'),
   },
   {
@@ -95,6 +100,7 @@ const TOP5_MOVIES: Top5Movie[] = [
     genreList: ['Sci-Fi', 'Action', 'Thriller'],
     poster: assetUrl('/Images/posters/poster-inception-2010.jpg'),
     backdrop: assetUrl('/Images/backdrops/backdrop-inception-2010.jpg'),
+    card: assetUrl('/Images/cards/card-inception-2010.jpg'),
     trailer: assetUrl('/Videos/trailers/trailer-inception-2010.mp4'),
   },
   {
@@ -111,6 +117,7 @@ const TOP5_MOVIES: Top5Movie[] = [
     genreList: ['Action', 'Crime', 'Drama'],
     poster: assetUrl('/Images/posters/poster-the-dark-knight-2008.jpg'),
     backdrop: assetUrl('/Images/backdrops/backdrop-the-dark-knight-2008.jpg'),
+    card: assetUrl('/Images/cards/card-the-dark-knight-2008.jpg'),
     trailer: assetUrl('/Videos/trailers/trailer-the-dark-knight-2008.mp4'),
   },
   {
@@ -127,6 +134,7 @@ const TOP5_MOVIES: Top5Movie[] = [
     genreList: ['Mystery', 'Thriller', 'Drama'],
     poster: assetUrl('/Images/posters/poster-shutter-island-2010.jpg'),
     backdrop: assetUrl('/Images/backdrops/backdrop-shutter-island-2010.jpg'),
+    card: assetUrl('/Images/cards/card-shutter-island-2010.jpg'),
     trailer: assetUrl('/Videos/trailers/trailer-shutter-island-2010.mp4'),
   },
 ];
@@ -675,6 +683,89 @@ function TrailerPlayer({
   );
 }
 
+/* ── Single Top 5 card (rank + cinematic art) ─────────────── */
+function Top5Card({
+  movie,
+  idx,
+  isHovered,
+  userRating,
+  onOpen,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  movie: Top5Movie;
+  idx: number;
+  isHovered: boolean;
+  userRating?: number;
+  onOpen: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  // Playable Top 5 titles use cinematic art with the title baked in; until that art is
+  // uploaded we fall back to the title-less backdrop and re-draw the title (showTitle).
+  const { src, showTitle, onError } = useCardArt(movie.card, movie.backdrop, movie.poster);
+
+  return (
+    <div className="relative group" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      <div
+        className={`relative aspect-video rounded-lg overflow-hidden cursor-pointer transition-all duration-300 ${
+          isHovered ? 'scale-105 z-20 shadow-2xl shadow-black/80 ring-1 ring-birgen-red/40' : 'z-10'
+        }`}
+        onClick={onOpen}
+      >
+        <Image
+          src={src ?? movie.backdrop}
+          alt={movie.displayTitle}
+          fill
+          className="object-cover"
+          sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 20vw"
+          onError={onError}
+        />
+
+        {/* Rank number — always shown (Netflix Top 10 style) */}
+        <span
+          className="absolute -bottom-2 -left-1 select-none pointer-events-none font-display leading-none text-transparent top5-number z-[3]"
+          style={{ fontSize: 'clamp(72px, 6vw, 120px)', WebkitTextStroke: '2px rgba(255,255,255,0.3)' }}
+        >
+          {idx + 1}
+        </span>
+
+        {/* Title — drawn only when there's no baked-in cinematic title */}
+        {showTitle && (
+          <>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-[2]" />
+            <div className="absolute bottom-2 right-2 left-12 text-right z-[3]">
+              <p className="text-white text-xs sm:text-sm font-semibold leading-tight drop-shadow-lg line-clamp-1">
+                {movie.displayTitle}
+              </p>
+              <p className="text-white/60 text-[10px] mt-0.5">{movie.year}</p>
+            </div>
+          </>
+        )}
+
+        {/* Rating badge — top right */}
+        {userRating && (
+          <div className="absolute top-2 right-2 flex items-center gap-0.5 px-2 py-0.5 rounded bg-birgen-red/90 shadow-md z-[4]">
+            <Star className="w-2.5 h-2.5 fill-white text-white" />
+            <span className="text-[10px] font-bold text-white">{userRating}/5</span>
+          </div>
+        )}
+
+        {/* Hover play icon overlay */}
+        <div
+          className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 z-[4] ${
+            isHovered ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <div className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
+            <Play className="w-5 h-5 fill-black text-black ml-0.5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Top 5 Kenya Section ─────────────────────────────── */
 export default function Top5Kenya() {
   const { ratings, rateMovie } = useRatings();
@@ -768,81 +859,19 @@ export default function Top5Kenya() {
 
         {/* 5-column grid — all movies visible, equal spacing */}
         <div className="px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
-            {TOP5_MOVIES.map((movie, idx) => {
-              const userRating = ratings.get(movie.movieId);
-              const isHovered = hoveredIdx === idx;
-              return (
-                <div
-                  key={movie.movieId}
-                  className="relative group"
-                  onMouseEnter={() => handleMouseEnter(idx)}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  {/* Landscape card with rank number */}
-                  <div
-                    className={`relative aspect-[16/10] rounded-lg overflow-hidden cursor-pointer transition-all duration-300 ${
-                      isHovered
-                        ? 'scale-105 z-20 shadow-2xl shadow-black/80 ring-1 ring-birgen-red/40'
-                        : 'z-10'
-                    }`}
-                    onClick={() => setInfoMovie(movie)}
-                  >
-                    {/* Backdrop image */}
-                    <Image
-                      src={movie.backdrop}
-                      alt={movie.displayTitle}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 20vw"
-                    />
-
-                    {/* Bottom gradient for readability */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-
-                    {/* Large rank number — bottom left, overlapping edge */}
-                    <span
-                      className="absolute -bottom-2 -left-1 select-none pointer-events-none font-display leading-none text-transparent top5-number"
-                      style={{
-                        fontSize: 'clamp(72px, 6vw, 120px)',
-                        WebkitTextStroke: '2px rgba(255,255,255,0.3)',
-                      }}
-                    >
-                      {idx + 1}
-                    </span>
-
-                    {/* Movie title — bottom right */}
-                    <div className="absolute bottom-2 right-2 left-12 text-right">
-                      <p className="text-white text-xs sm:text-sm font-semibold leading-tight drop-shadow-lg line-clamp-1">
-                        {movie.displayTitle}
-                      </p>
-                      <p className="text-white/60 text-[10px] mt-0.5">{movie.year}</p>
-                    </div>
-
-                    {/* Rating badge — top right */}
-                    {userRating && (
-                      <div className="absolute top-2 right-2 flex items-center gap-0.5 px-2 py-0.5 rounded bg-birgen-red/90 shadow-md z-10">
-                        <Star className="w-2.5 h-2.5 fill-white text-white" />
-                        <span className="text-[10px] font-bold text-white">
-                          {userRating}/5
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Hover play icon overlay */}
-                    <div
-                      className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${
-                        isHovered ? 'opacity-100' : 'opacity-0'
-                      }`}
-                    >
-                      <div className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
-                        <Play className="w-5 h-5 fill-black text-black ml-0.5" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {TOP5_MOVIES.map((movie, idx) => (
+              <Top5Card
+                key={movie.movieId}
+                movie={movie}
+                idx={idx}
+                isHovered={hoveredIdx === idx}
+                userRating={ratings.get(movie.movieId)}
+                onOpen={() => setInfoMovie(movie)}
+                onMouseEnter={() => handleMouseEnter(idx)}
+                onMouseLeave={handleMouseLeave}
+              />
+            ))}
           </div>
         </div>
       </section>

@@ -6,6 +6,8 @@ export interface Movie {
   predicted_rating?: number;
   poster_url?: string | null;
   backdrop_url?: string | null;
+  /** Cinematic card art with the title baked in (playable titles only). Falls back to backdrop. */
+  card_url?: string | null;
   year?: string | null;
   overview?: string;
   tmdb_id?: number;

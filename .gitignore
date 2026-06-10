@@ -40,3 +40,7 @@ infra/ffmpeg/hls/
 infra/r2/staging/
 infra/r2/.hls-r2-manifest-*.json
 *.tsdownload
+
+# R2 S3 credentials for rclone uploads (NEVER commit)
+infra/ffmpeg/.r2-credentials.ps1
+.r2-credentials.ps1

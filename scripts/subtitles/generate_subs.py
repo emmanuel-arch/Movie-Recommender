@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -72,7 +74,109 @@ def write_vtt(path: str, cues: list[Cue]) -> None:
     print(f"  wrote {path}  ({len(cues)} cues)")
 
 
+# ── Cue segmentation (from word timestamps) ─────────────────────────────────
+# Whisper's *segment* end-time often runs far past the last spoken word — across
+# a silent/musical stretch it stretches to the next line, so a caption like
+# "I'm a beast." can sit on screen for minutes. We instead rebuild cues from
+# *word-level* timestamps: every cue ends when its words end, capped to a
+# readable length and split on natural pauses/sentence ends.
+MAX_CUE_CHARS = 84       # ~2 lines x 42 chars
+MAX_CUE_SEC   = 6.0      # no caption stays up longer than this
+GAP_SPLIT_SEC = 0.8      # a silence gap at least this long forces a new cue
+MIN_CUE_SEC   = 1.2      # don't break on punctuation before a cue is this long
+SENT_END      = (".", "!", "?", "…")
+
+
+def _flush(words: list) -> "Cue | None":
+    text = "".join(w.word for w in words).strip()
+    if not text:
+        return None
+    return Cue(words[0].start, words[-1].end, text)
+
+
+def build_cues_from_words(words: list) -> list[Cue]:
+    """Group Whisper word objects (.start/.end/.word) into well-timed cues."""
+    cues: list[Cue] = []
+    cur: list = []
+    for w in words:
+        if cur:
+            gap = w.start - cur[-1].end
+            cur_text = "".join(x.word for x in cur).strip()
+            cur_dur = cur[-1].end - cur[0].start
+            ends_sentence = cur_text.endswith(SENT_END)
+            too_long_text = len(cur_text) + len(w.word) > MAX_CUE_CHARS
+            too_long_time = (w.end - cur[0].start) > MAX_CUE_SEC
+            if gap >= GAP_SPLIT_SEC or too_long_text or too_long_time or (
+                ends_sentence and cur_dur >= MIN_CUE_SEC
+            ):
+                c = _flush(cur)
+                if c:
+                    cues.append(c)
+                cur = []
+        cur.append(w)
+    c = _flush(cur)
+    if c:
+        cues.append(c)
+    return cues
+
+
 # ── Transcription (faster-whisper) ──────────────────────────────────────────
+# Whisper's feature extractor builds the mel-spectrogram (STFT) over the WHOLE
+# audio array up front. For a feature-length film that single float64 array is
+# >1 GiB and OOMs on machines without much RAM. We therefore decode the audio in
+# overlapping windows with ffmpeg and transcribe each window separately, offsetting
+# every timestamp back to the absolute timeline, then stitch the words together.
+SAMPLE_RATE = 16000
+
+
+class _Word:
+    """Mutable stand-in for faster-whisper's Word (which is an immutable tuple),
+    so we can offset its timestamps onto the absolute timeline."""
+    __slots__ = ("start", "end", "word")
+
+    def __init__(self, start: float, end: float, word: str):
+        self.start = start
+        self.end = end
+        self.word = word
+
+
+def _fftool(name: str) -> str:
+    path = shutil.which(name)
+    if not path:
+        sys.exit(
+            f"'{name}' not found on PATH. ffmpeg/ffprobe are required to chunk the audio. "
+            "Install ffmpeg and re-run."
+        )
+    return path
+
+
+def _media_duration(path: str) -> float | None:
+    """Total duration in seconds via ffprobe, or None if it can't be read."""
+    try:
+        out = subprocess.run(
+            [_fftool("ffprobe"), "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nokey=1:noprint_wrappers=1", path],
+            capture_output=True, text=True, check=True,
+        )
+        return float(out.stdout.strip())
+    except Exception:
+        return None
+
+
+def _read_audio_window(path: str, start: float, dur: float):
+    """Decode [start, start+dur] to a mono 16 kHz float32 numpy array via ffmpeg."""
+    import numpy as np
+    cmd = [
+        _fftool("ffmpeg"), "-v", "error",
+        "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", path,
+        "-f", "f32le", "-ac", "1", "-ar", str(SAMPLE_RATE), "-",
+    ]
+    proc = subprocess.run(cmd, capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.decode("utf-8", "ignore")[-500:])
+    return np.frombuffer(proc.stdout, dtype=np.float32)
+
+
 def transcribe(input_path: str, model_size: str) -> list[Cue]:
     try:
         from faster_whisper import WhisperModel
@@ -82,17 +186,63 @@ def transcribe(input_path: str, model_size: str) -> list[Cue]:
     # int8 runs on CPU; switch device='cuda', compute_type='float16' on a GPU.
     device = os.environ.get("WHISPER_DEVICE", "cpu")
     compute = os.environ.get("WHISPER_COMPUTE", "int8" if device == "cpu" else "float16")
+    chunk_sec = float(os.environ.get("WHISPER_CHUNK_SEC", "600"))   # 10 min windows
+    overlap = float(os.environ.get("WHISPER_CHUNK_OVERLAP", "5"))   # lead-in for context
     print(f"[1/3] Transcribing with faster-whisper ({model_size}, {device}/{compute}) …")
 
     model = WhisperModel(model_size, device=device, compute_type=compute)
-    segments, info = model.transcribe(
-        input_path,
-        language="en",          # Get Out is English audio
-        vad_filter=True,        # drop long silences for cleaner cue boundaries
-        beam_size=5,
-    )
-    cues = [Cue(seg.start, seg.end, seg.text) for seg in segments]
-    print(f"      detected {len(cues)} cues, ~{info.duration/60:.1f} min")
+
+    duration = _media_duration(input_path)
+    if duration is None:
+        # Couldn't probe — fall back to whole-file decode (original behaviour).
+        print("      (could not probe duration; transcribing whole file in one pass)")
+        windows = [(0.0, None)]
+    else:
+        windows = []
+        start = 0.0
+        while start < duration:
+            windows.append((start, min(chunk_sec + overlap, duration - start)))
+            start += chunk_sec
+        print(f"      ~{duration/60:.1f} min → {len(windows)} window(s) of {chunk_sec/60:.0f} min")
+
+    words: list = []
+    fallback: list[Cue] = []
+    for idx, (wstart, wdur) in enumerate(windows):
+        audio = input_path if wdur is None else _read_audio_window(input_path, wstart, wdur)
+        segments, _info = model.transcribe(
+            audio,
+            language="en",            # all five titles are English audio
+            vad_filter=True,          # drop long silences for cleaner cue boundaries
+            beam_size=5,
+            word_timestamps=True,     # needed to end cues at the last spoken word
+        )
+        # Skip the overlap region on every window after the first — it was already
+        # transcribed by the previous window's tail — to avoid duplicate cues.
+        keep_from = 0.0 if idx == 0 else wstart + overlap
+        for seg in segments:
+            if getattr(seg, "words", None):
+                for w in seg.words:
+                    aw_start = w.start + wstart
+                    if aw_start < keep_from:
+                        continue
+                    words.append(_Word(aw_start, w.end + wstart, w.word))
+            else:
+                # No word timing for this segment — keep it but cap its duration.
+                s = seg.start + wstart
+                if s < keep_from:
+                    continue
+                e = min(seg.end, seg.start + MAX_CUE_SEC) + wstart
+                fallback.append(Cue(s, e, seg.text))
+        if wdur is not None:
+            print(f"      window {idx+1}/{len(windows)} done", end="\r")
+    if windows and windows[0][1] is not None:
+        print()
+
+    cues = build_cues_from_words(words)
+    cues.extend(fallback)
+    cues.sort(key=lambda c: c.start)
+    total = duration if duration else (cues[-1].end if cues else 0.0)
+    print(f"      detected {len(cues)} cues, ~{total/60:.1f} min")
     return cues
 
 

@@ -20,7 +20,10 @@
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)][string]$Input,
+  # NB: do not name this '$Input' — that shadows PowerShell's automatic $Input
+  # (the pipeline enumerator), which leaves the bound value empty at runtime.
+  # The 'Input' alias keeps `-Input <path>` working for callers/muscle memory.
+  [Parameter(Mandatory = $true)][Alias('Input')][string]$InputPath,
   [Parameter(Mandatory = $true)][string]$Slug,
   [switch]$Upload,
   [string]$R2Bucket = 'birgenai-assets'
@@ -28,7 +31,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path $Input)) { throw "Input not found: $Input" }
+if (-not (Test-Path $InputPath)) { throw "Input not found: $InputPath" }
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
   throw "ffmpeg is not installed. Try: choco install ffmpeg / winget install Gyan.FFmpeg"
 }
@@ -40,41 +43,50 @@ Write-Host "-> Transcoding 4-bitrate ABR ladder for '$Slug'..." -ForegroundColor
 
 # All scaling in filter_complex — FFmpeg 6+ errors if -vf is used on a stream
 # already produced by -filter_complex.
+# Aspect-preserving: scale to FIT inside each box (force_original_aspect_ratio=decrease),
+# then pad to the exact rendition size so the encoded frame matches the master.m3u8
+# RESOLUTION tags without ever stretching the picture. For a true 16:9 source the pad is
+# a no-op; a 1920x1024 (or other) source gets thin letterbox bars instead of distortion.
+$scaleChain = {
+  param($w, $h, $out)
+  "scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos:force_divisible_by=2," +
+  "pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[$out]"
+}
 $filterComplex = '[0:v]split=4[v1][v2][v3][v4];' +
-  '[v1]scale=1920:1080:flags=lanczos[v1s];' +
-  '[v2]scale=1280:720:flags=lanczos[v2s];' +
-  '[v3]scale=854:480:flags=lanczos[v3s];' +
-  '[v4]scale=640:360:flags=lanczos[v4s]'
+  "[v1]$(& $scaleChain 1920 1080 'v1s');" +
+  "[v2]$(& $scaleChain 1280 720  'v2s');" +
+  "[v3]$(& $scaleChain 854  480  'v3s');" +
+  "[v4]$(& $scaleChain 640  360  'v4s')"
 
 $ffArgs = @(
-  '-y', '-i', $Input,
+  '-y', '-i', $InputPath,
   '-filter_complex', $filterComplex,
 
   '-map', '[v1s]', '-map', '0:a',
   '-c:v', 'libx264', '-crf', '20', '-preset', 'fast',
   '-b:v', '4500k', '-maxrate', '4800k', '-bufsize', '9000k',
-  '-c:a', 'aac', '-b:a', '128k',
+  '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/1080p/seg%03d.ts", "$Out/1080p/stream.m3u8",
 
   '-map', '[v2s]', '-map', '0:a',
   '-c:v', 'libx264', '-crf', '22', '-preset', 'fast',
   '-b:v', '2500k', '-maxrate', '2800k', '-bufsize', '5000k',
-  '-c:a', 'aac', '-b:a', '128k',
+  '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/720p/seg%03d.ts", "$Out/720p/stream.m3u8",
 
   '-map', '[v3s]', '-map', '0:a',
   '-c:v', 'libx264', '-crf', '24', '-preset', 'fast',
   '-b:v', '1000k', '-maxrate', '1200k', '-bufsize', '2000k',
-  '-c:a', 'aac', '-b:a', '96k',
+  '-c:a', 'aac', '-b:a', '96k', '-ac', '2',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/480p/seg%03d.ts", "$Out/480p/stream.m3u8",
 
   '-map', '[v4s]', '-map', '0:a',
   '-c:v', 'libx264', '-crf', '28', '-preset', 'fast',
   '-b:v', '400k', '-maxrate', '500k', '-bufsize', '1000k',
-  '-c:a', 'aac', '-b:a', '64k',
+  '-c:a', 'aac', '-b:a', '64k', '-ac', '2',
   '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
   '-hls_segment_filename', "$Out/360p/seg%03d.ts", "$Out/360p/stream.m3u8"
 )
@@ -96,7 +108,7 @@ Write-Host "-> Writing master.m3u8" -ForegroundColor Cyan
 '@ | Out-File -FilePath "$Out/master.m3u8" -Encoding ascii
 
 Write-Host "-> Generating poster frame" -ForegroundColor Cyan
-& ffmpeg -y -ss '00:00:10' -i $Input -frames:v 1 -q:v 2 -vf 'scale=1280:-1' "$Out/poster.jpg"
+& ffmpeg -y -ss '00:00:10' -i $InputPath -frames:v 1 -q:v 2 -vf 'scale=1280:-1' "$Out/poster.jpg"
 
 Write-Host "OK Output: $Out" -ForegroundColor Green
 
