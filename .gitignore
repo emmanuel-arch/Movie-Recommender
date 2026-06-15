@@ -37,6 +37,8 @@ submission/
 # Local media/transcoding artifacts (do not commit)
 infra/ffmpeg/.wrangler/
 infra/ffmpeg/hls/
+infra/ffmpeg/stage/
+infra/ffmpeg/.pipeline-state/
 infra/r2/staging/
 infra/r2/.hls-r2-manifest-*.json
 *.tsdownload

@@ -31,7 +31,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path $InputPath)) { throw "Input not found: $InputPath" }
+# -LiteralPath: source filenames contain [ ] (e.g. "[1080p] [5.1] [YTS.BZ]"), which
+# Test-Path would otherwise treat as wildcard character classes and fail to match.
+if (-not (Test-Path -LiteralPath $InputPath)) { throw "Input not found: $InputPath" }
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
   throw "ffmpeg is not installed. Try: choco install ffmpeg / winget install Gyan.FFmpeg"
 }
@@ -108,7 +110,7 @@ Write-Host "-> Writing master.m3u8" -ForegroundColor Cyan
 '@ | Out-File -FilePath "$Out/master.m3u8" -Encoding ascii
 
 Write-Host "-> Generating poster frame" -ForegroundColor Cyan
-& ffmpeg -y -ss '00:00:10' -i $InputPath -frames:v 1 -q:v 2 -vf 'scale=1280:-1' "$Out/poster.jpg"
+& ffmpeg -y -ss '00:00:10' -i $InputPath -frames:v 1 -update 1 -q:v 2 -vf 'scale=1280:-1' "$Out/poster.jpg"
 
 Write-Host "OK Output: $Out" -ForegroundColor Green
 

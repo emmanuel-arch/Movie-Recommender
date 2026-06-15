@@ -275,6 +275,156 @@ export const CATALOG: CatalogEntry[] = [
   // NOTE: `slug` MUST equal the R2 folder name (Videos/films/<slug>/master.m3u8).
   // Flip `playable` to true the moment a title's HLS finishes uploading. Metadata
   // (cast/director/runtime/rating) is a best-effort first pass — verify & refine.
+  // NEW 1080p drop (2026-06-13) — newest createdAt so these lead the HD row.
+  // `playable`/`comingSoon` carry a // FLIP:<slug> token that publish-new-films.ps1
+  // flips to live the moment each title's HLS is uploaded + verified (200) in R2.
+  // `media.backdrop` points at the frame-grab the pipeline uploads, so the Netflix
+  // card looks right before bespoke Images/cards/card-<assetKey>.jpg art is uploaded.
+  // METADATA IS BEST-EFFORT — verify cast/director/rating/runtime before the demo.
+  sec('Now Streaming in HD', {
+    movieId: 91000507,
+    slug: 'crime-101-2026',
+    assetKey: 'crime-101-2026',
+    displayTitle: 'Crime 101',
+    year: 2026,
+    runtimeMinutes: 139,
+    maturity: 'R',
+    tmdbVoteAverage: 7.0,
+    overview:
+      'A career thief runs a string of high-end jewel heists along the California coast while a dogged detective slowly closes in — a sleek modern crime thriller.',
+    genres: ['Crime', 'Thriller', 'Drama'],
+    playable: true, // FLIP-DONE:crime-101-2026
+    comingSoon: false, // FLIP-DONE:crime-101-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: true,
+    cast: ['Chris Hemsworth', 'Mark Ruffalo', 'Halle Berry', 'Barry Keoghan'], // verify
+    director: 'Bart Layton', // verify
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-13T12:30:00.000Z',
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-crime-101-2026.jpg') },
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000508,
+    slug: 'apex-2026',
+    assetKey: 'apex-2026',
+    displayTitle: 'Apex',
+    year: 2026,
+    runtimeMinutes: 95,
+    maturity: 'R',
+    tmdbVoteAverage: 6.0,
+    overview:
+      'A high-stakes survival thriller — an ordinary person is hunted across hostile terrain and must outlast a relentless, resourceful pursuer.',
+    genres: ['Action', 'Thriller'],
+    playable: true, // FLIP-DONE:apex-2026
+    comingSoon: false, // FLIP-DONE:apex-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['TBA'], // verify
+    director: 'TBA', // verify
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-13T12:25:00.000Z',
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-apex-2026.jpg') },
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000509,
+    slug: 'mercy-2026',
+    assetKey: 'mercy-2026',
+    displayTitle: 'Mercy',
+    year: 2026,
+    runtimeMinutes: 100,
+    maturity: 'R',
+    tmdbVoteAverage: 6.5,
+    overview:
+      'In the near future, a detective accused of murder has mere hours to prove his innocence to an AI justice system that has already decided his fate.',
+    genres: ['Sci-Fi', 'Thriller', 'Action'],
+    playable: true, // FLIP-DONE:mercy-2026
+    comingSoon: false, // FLIP-DONE:mercy-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: true,
+    cast: ['Chris Pratt', 'Rebecca Ferguson'], // verify
+    director: 'Timur Bekmambetov', // verify
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-13T12:20:00.000Z',
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-mercy-2026.jpg') },
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000510,
+    slug: 'send-help-2026',
+    assetKey: 'send-help-2026',
+    displayTitle: 'Send Help',
+    year: 2026,
+    runtimeMinutes: 113,
+    maturity: 'R',
+    tmdbVoteAverage: 6.2,
+    overview:
+      'Stranded after a crash, two coworkers have to survive the elements — and each other — in a darkly comic horror-thriller where trust is the first casualty.',
+    genres: ['Horror', 'Thriller', 'Comedy'],
+    playable: true, // FLIP-DONE:send-help-2026
+    comingSoon: false, // FLIP-DONE:send-help-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: true,
+    cast: ['Rachel McAdams', 'Dylan O\'Brien'], // verify
+    director: 'Sam Raimi', // verify
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-13T12:15:00.000Z',
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-send-help-2026.jpg') },
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000511,
+    slug: 'jack-ryan-ghost-war-2026',
+    assetKey: 'jack-ryan-ghost-war-2026',
+    displayTitle: 'Jack Ryan: Ghost War',
+    year: 2026,
+    runtimeMinutes: 107,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 6.4,
+    overview:
+      'Analyst-turned-operative Jack Ryan races against the clock to stop a covert conflict from igniting into open war between global powers.',
+    genres: ['Action', 'Thriller'],
+    playable: true, // FLIP-DONE:jack-ryan-ghost-war-2026
+    comingSoon: false, // FLIP-DONE:jack-ryan-ghost-war-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['TBA'], // verify
+    director: 'TBA', // verify
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-13T12:10:00.000Z',
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-jack-ryan-ghost-war-2026.jpg') },
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000512,
+    slug: 'the-wrecking-crew-2026',
+    assetKey: 'the-wrecking-crew-2026',
+    displayTitle: 'The Wrecking Crew',
+    year: 2026,
+    runtimeMinutes: 124,
+    maturity: 'R',
+    tmdbVoteAverage: 6.3,
+    overview:
+      'Two mismatched enforcers are forced to team up for one explosive, wisecracking job that spins wildly out of control across the city.',
+    genres: ['Action', 'Comedy'],
+    playable: true, // FLIP-DONE:the-wrecking-crew-2026
+    comingSoon: false, // FLIP-DONE:the-wrecking-crew-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Jason Momoa', 'Dave Bautista'], // verify
+    director: 'TBA', // verify
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-13T12:05:00.000Z',
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-the-wrecking-crew-2026.jpg') },
+  }),
   sec('Now Streaming in HD', {
     movieId: 91000506,
     slug: 'candy-jar-2018',
