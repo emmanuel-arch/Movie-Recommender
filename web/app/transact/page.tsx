@@ -8,14 +8,17 @@ import { ArrowLeft, CheckCircle2, CreditCard, Landmark, Smartphone } from 'lucid
 import Navbar from '@/components/Navbar';
 import STKPushModal from '@/components/STKPushModal';
 import { useAuth } from '@/components/AuthProvider';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import { PREMIUM_MONTHLY_KES_LIST, PREMIUM_MONTHLY_KES_PROMO } from '@/lib/billing';
 
 type PaymentStep = 'method' | 'phone';
 
 export default function TransactPage() {
   const router = useRouter();
-  const { user, profile, loading, refreshProfile } = useAuth();
-  const isPremium = profile?.plan === 'premium';
+  const { user, loading: authLoading, refreshProfile } = useAuth();
+  const { isPremium, loading: entLoading, refresh: refreshEntitlement } = useEntitlement();
+  // Wait for BOTH auth and entitlement so a Premium user never flashes the checkout.
+  const loading = authLoading || entLoading;
 
   const [step, setStep] = useState<PaymentStep>('method');
   const [stkOpen, setStkOpen] = useState(false);
@@ -34,9 +37,11 @@ export default function TransactPage() {
   }, [loading, isPremium, router]);
 
   const onPaid = useCallback(async () => {
-    await refreshProfile();
+    // Re-read the authoritative entitlement (and legacy profile) before bouncing
+    // home so the user lands already-Premium.
+    await Promise.all([refreshProfile(), refreshEntitlement()]);
     router.replace('/');
-  }, [refreshProfile, router]);
+  }, [refreshProfile, refreshEntitlement, router]);
 
   if (loading || !user || isPremium) {
     return (

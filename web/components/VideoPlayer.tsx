@@ -30,6 +30,7 @@ import {
   Gauge,
   Lock,
   Layers,
+  Sparkles,
 } from 'lucide-react';
 import Hls, { type Level } from 'hls.js';
 import Image from 'next/image';
@@ -45,6 +46,8 @@ import {
   LOCKED_SUBTITLE_LANGS,
   PLAYBACK_SPEEDS,
 } from '@/lib/playableMovies';
+import { PREMIUM_MONTHLY_KES_PROMO, PREMIUM_MONTHLY_KES_LIST } from '@/lib/billing';
+import { moviesPremiumCheckoutUrl } from '@/lib/premiumCheckout';
 
 export interface NextUpMovie {
   title: string;
@@ -99,6 +102,8 @@ export default function VideoPlayer({
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTimeRef = useRef<number>(0);
+  // The free-tier watch gate is evaluated exactly once, at start (finish-your-film).
+  const gateDoneRef = useRef(false);
 
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -216,6 +221,47 @@ export default function VideoPlayer({
     video.addEventListener('loadedmetadata', onLoaded);
     return () => video.removeEventListener('loadedmetadata', onLoaded);
   }, [trackingTarget, watchSession]);
+
+  // ── Free-tier watch gate — finish-your-film ───────────────────────────────
+  // Evaluated EXACTLY ONCE, at start, after the authoritative entitlement +
+  // monthly-usage read has resolved. An over-cap free user may finish a title
+  // already in progress (resume position > 0), but pressing Play on a NEW title is
+  // walled. We never re-evaluate mid-playback, so a film that was allowed to start
+  // always plays through to the end — the single biggest anti-churn rule.
+  useEffect(() => {
+    if (gateDoneRef.current) return;
+    if (!enforceScreenTime || !fullMovie || !user) {
+      gateDoneRef.current = true;
+      return;
+    }
+    if (screenTime.loading) return; // wait for the fresh entitlement + usage read
+    gateDoneRef.current = true;
+    if (screenTime.isPremium || !screenTime.isOverCap) return; // premium or under cap → allowed
+    let cancelled = false;
+    void (async () => {
+      let inProgress = false;
+      try {
+        inProgress = (await watchSession.getResumePosition()) > 0;
+      } catch {
+        inProgress = false;
+      }
+      if (cancelled || inProgress) return; // resuming a started title → let them finish
+      videoRef.current?.pause();
+      setPaused(true);
+      setCapBlock(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    enforceScreenTime,
+    fullMovie,
+    user,
+    screenTime.loading,
+    screenTime.isPremium,
+    screenTime.isOverCap,
+    watchSession,
+  ]);
 
   // ── auto-hide controls ────────────────────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -338,13 +384,9 @@ export default function VideoPlayer({
     }
 
     if (trackingTarget) watchSession.tick(now, v.duration, watchedDelta);
-
-    if (enforceScreenTime && user && !screenTime.isPremium && screenTime.isOverCap && fullMovie) {
-      v.pause();
-      setPaused(true);
-      setCapBlock(true);
-    }
-  }, [trackingTarget, watchSession, enforceScreenTime, user, screenTime.isPremium, screenTime.isOverCap, fullMovie]);
+    // NOTE: the free-tier cap is enforced once at START (see the watch-gate effect
+    // above), never here — so a title allowed to begin is never interrupted.
+  }, [trackingTarget, watchSession]);
 
   const onProgressClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -492,7 +534,13 @@ export default function VideoPlayer({
 
       {/* Screen-time paywall */}
       {capBlock && (
-        <ScreenTimePaywall totalSeconds={screenTime.totalSeconds} cap={screenTime.cap} onClose={onClose} />
+        <ScreenTimePaywall
+          totalSeconds={screenTime.totalSeconds}
+          cap={screenTime.cap}
+          title={title}
+          poster={poster}
+          onClose={onClose}
+        />
       )}
 
       {/* Controls overlay */}
@@ -871,40 +919,87 @@ function SkipButton({
   );
 }
 
+/**
+ * Full-screen, cinematic free-tier paywall. Shown when an over-cap free user
+ * presses Play on a NEW title (the watch-gate effect sets `capBlock`). Framed as
+ * "keep watching" rather than "you're blocked" — the conversion is highest at the
+ * moment of intent, so the copy celebrates the habit instead of punishing it.
+ *
+ * Phase 1: the CTA routes to /upgrade. Phase 2 repoints it at the centralized
+ * www.birgenai.com/wallet checkout (the single STK engine for the whole suite).
+ */
 function ScreenTimePaywall({
   totalSeconds,
   cap,
+  title,
+  poster,
   onClose,
 }: {
   totalSeconds: number;
   cap: number;
+  title?: string;
+  poster?: string | null;
   onClose: () => void;
 }) {
-  const hours = Math.round(totalSeconds / 3600);
-  const capHours = Math.round(cap / 3600);
+  void totalSeconds; // (kept for future "X h watched" copy / analytics)
+  const capHours = Math.max(1, Math.round(cap / 3600));
+  const save = Math.round(
+    ((PREMIUM_MONTHLY_KES_LIST - PREMIUM_MONTHLY_KES_PROMO) / PREMIUM_MONTHLY_KES_LIST) * 100,
+  );
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/85 backdrop-blur-md animate-fade-in">
-      <div className="max-w-md mx-4 p-8 rounded-2xl bg-birgen-dark border border-birgen-border shadow-2xl text-center">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-birgen-red/10 border border-birgen-red/20 mb-5">
-          <Film className="w-6 h-6 text-birgen-red" />
+    <div className="absolute inset-0 z-20 flex items-center justify-center animate-fade-in">
+      {/* Cinematic backdrop: a blurred still of the title they were about to watch. */}
+      {poster ? (
+        <div
+          className="absolute inset-0 bg-cover bg-center scale-110 blur-2xl opacity-40"
+          style={{ backgroundImage: `url(${poster})` }}
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/80 to-black/95" />
+
+      <div className="relative max-w-lg w-full mx-4 p-8 sm:p-10 rounded-2xl bg-birgen-dark/80 border border-birgen-border backdrop-blur-xl shadow-2xl text-center">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-birgen-red/15 border border-birgen-red/30 mb-5">
+          <Lock className="w-6 h-6 text-birgen-red" />
         </div>
-        <h3 className="font-display text-3xl text-white tracking-wide mb-2">You&apos;ve hit your free limit</h3>
-        <p className="text-birgen-silver text-sm leading-relaxed mb-6">
-          You&apos;ve watched <span className="text-white font-semibold">{hours} h</span> this month on your free plan.
-          Upgrade to Premium for unlimited viewing, no ads, and early access to new Kenyan releases.
+        <p className="text-birgen-red font-bold text-[11px] uppercase tracking-[0.2em] mb-3">
+          You&apos;ve been watching a lot — we love that
         </p>
+        <h3 className="font-display text-3xl sm:text-4xl text-white tracking-wide leading-tight mb-3">
+          Keep {title ? <span className="text-birgen-red">{title}</span> : 'the movies'} going
+        </h3>
+        <p className="text-birgen-silver text-sm leading-relaxed mb-6">
+          You&apos;ve used your <span className="text-white font-semibold">{capHours} h</span> of free
+          watching this month. Go Premium for <span className="text-white font-semibold">unlimited</span>{' '}
+          viewing, no ads, and full HD.
+        </p>
+
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <span className="text-birgen-muted line-through text-lg">KSh {PREMIUM_MONTHLY_KES_LIST}</span>
+          <span className="text-4xl font-bold text-white tracking-tight">KSh {PREMIUM_MONTHLY_KES_PROMO}</span>
+          <span className="text-birgen-muted text-sm self-end mb-1">/ month</span>
+        </div>
+        <p className="text-amber-300 text-xs font-semibold uppercase tracking-wider mb-6">
+          Save {save}% — intro price, this month only
+        </p>
+
         <div className="flex flex-col gap-2">
           <a
-            href="/upgrade"
-            className="w-full py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold rounded-md transition-all hover:scale-[1.02] active:scale-95"
+            href={moviesPremiumCheckoutUrl()}
+            className="w-full py-3.5 bg-birgen-red hover:bg-birgen-red-light text-white font-bold rounded-md transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
           >
-            Go Premium — unlimited watching
+            <Sparkles className="w-4 h-4" />
+            Go Premium — KSh {PREMIUM_MONTHLY_KES_PROMO}/mo
           </a>
-          <button onClick={onClose} className="w-full py-2.5 text-birgen-muted hover:text-white text-sm transition-colors">
-            Not now
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 text-birgen-muted hover:text-white text-sm transition-colors"
+          >
+            Maybe later
           </button>
         </div>
-        <p className="text-[11px] text-birgen-muted mt-5">Free tier · {capHours} h / month · Resets on the 1st</p>
+        <p className="text-[11px] text-birgen-muted mt-5">
+          One month · pay with M-PESA · no auto-charge · free tier resets on the 1st
+        </p>
       </div>
     </div>
   );

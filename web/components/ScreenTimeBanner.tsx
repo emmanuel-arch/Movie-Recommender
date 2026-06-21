@@ -17,13 +17,18 @@ export default function ScreenTimeBanner() {
   const { loading, notifications, dismissNotification, isWarning, isOverCap, isPremium, totalSeconds, cap } =
     useScreenTime();
 
-  if (loading || isPremium) return null;
+  if (loading) return null;
 
   // Prefer the freshest server notification if present.
   const server: Notification | undefined = notifications[0];
+  const isLifecycle = server?.type?.startsWith('subscription_') ?? false;
 
-  // Otherwise synthesise a client-side banner from real-time counters.
-  if (!server && !isWarning && !isOverCap) return null;
+  // Premium users only ever see subscription-lifecycle nudges (e.g. "renews soon");
+  // the free-tier screen-time warnings don't apply to them.
+  if (isPremium && !isLifecycle) return null;
+
+  // Non-premium: nothing to show unless there's a server notif or a live threshold.
+  if (!isPremium && !server && !isWarning && !isOverCap) return null;
 
   const hours = Math.round(totalSeconds / 3600);
   const capHours = Math.round(cap / 3600);

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Search, Bell, Menu, X, User, LogOut, LogIn, Sparkles, Users, Pencil, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useScreenTime } from '@/hooks/useScreenTime';
+import { moviesPremiumCheckoutUrl } from '@/lib/premiumCheckout';
 import Avatar from '@/components/Avatar';
 
 interface NavbarProps {
@@ -23,7 +24,7 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
     activeWatchingProfile,
     setActiveWatchingProfile,
   } = useAuth();
-  const { notifications } = useScreenTime();
+  const { notifications, isPremium } = useScreenTime();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -236,7 +237,7 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
                         </p>
                         <p className="text-birgen-muted text-[11px] truncate">
                           {user
-                            ? `${profile?.plan === 'premium' ? 'Premium' : 'Free'} · ${profile?.display_name ?? user.email}`
+                            ? `${isPremium ? 'Premium' : 'Free'} · ${profile?.display_name ?? user.email}`
                             : `${ratingCount} movies rated · guest`}
                         </p>
                       </div>
@@ -320,15 +321,15 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
                     >
                       Rate Movies
                     </Link>
-                    {profile?.plan !== 'premium' && (
-                      <Link
-                        href="/upgrade"
+                    {!isPremium && (
+                      <a
+                        href={moviesPremiumCheckoutUrl()}
                         onClick={() => setProfileOpen(false)}
                         className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-birgen-red hover:bg-birgen-red/10 transition-colors font-semibold"
                       >
                         <Sparkles className="w-4 h-4" />
-                        Go Premium
-                      </Link>
+                        Go Premium — KSh 99/mo
+                      </a>
                     )}
                   </div>
 

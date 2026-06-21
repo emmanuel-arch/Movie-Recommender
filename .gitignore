@@ -39,9 +39,14 @@ infra/ffmpeg/.wrangler/
 infra/ffmpeg/hls/
 infra/ffmpeg/stage/
 infra/ffmpeg/.pipeline-state/
+infra/ffmpeg/.chunks/
 infra/r2/staging/
 infra/r2/.hls-r2-manifest-*.json
 *.tsdownload
+
+# Transcode/build run logs (artifacts, not source)
+infra/ffmpeg/*.log
+*.log
 
 # R2 S3 credentials for rclone uploads (NEVER commit)
 infra/ffmpeg/.r2-credentials.ps1

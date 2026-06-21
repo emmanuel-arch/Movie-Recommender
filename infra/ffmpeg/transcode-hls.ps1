@@ -1,101 +1,140 @@
 <#
 .SYNOPSIS
-  BirgenAI HLS Transcode + Upload — Windows PowerShell version.
+  BirgenAI HLS Transcode - SINGLE-PASS, reliable. Produces a 4-bitrate ABR ladder
+  (1080p/720p/480p/360p) + master.m3u8 + poster for one source file.
 
 .DESCRIPTION
-  Mirrors transcode-hls.sh: produces a 4-bitrate ABR ladder for a single MP4
-  input and (optionally) uploads the result to Cloudflare R2 via Wrangler.
+  Each rendition is encoded in ONE linear ffmpeg pass straight from the source to
+  end-of-file. Unlike the previous chunked approach, there is no lossless `-c copy`
+  split, so a mid-file timestamp discontinuity or a briefly corrupt region can NOT
+  silently truncate the output the way it did for goat-2026 / in-the-grey-2026 —
+  ffmpeg decodes through it (concealing errors) and keeps going to the real EOF.
 
-.PARAMETER Input
-  Path to the source MP4.
-.PARAMETER Slug
-  Folder / URL slug for this movie (e.g. 'nairobi-half-life').
-.PARAMETER Upload
-  If set, pushes the output to R2 via `wrangler r2 object put`.
-.PARAMETER R2Bucket
-  R2 bucket name. Defaults to 'birgenai-assets'.
+  RESUME: coarse, per-rendition. A rendition is "done" only when its stream.m3u8
+  ends with #EXT-X-ENDLIST; on a re-run, finished renditions are skipped and an
+  interrupted one is cleared and re-encoded from the start. (We trade per-chunk
+  resume for correctness — the chunk method's resumability is what made it fragile.)
+
+  COMPLETENESS GATE: after encoding, the summed #EXTINF duration of the 1080p
+  rendition MUST be within -DurationTolerance of the source's ffprobe duration, or
+  the script THROWS and writes no master.m3u8. A title with no master never uploads
+  and never goes live, so a truncated transcode can't reach viewers again.
+
+.PARAMETER InputPath   Source file (alias -Input). [ ] in names handled via -LiteralPath.
+.PARAMETER Slug        Folder/URL slug -> hls\<slug>\.
+.PARAMETER DurationTolerance  Max allowed |hls-source|/source. Default 0.02 (2%).
+.PARAMETER Force       Re-encode every rendition even if already complete.
 
 .EXAMPLE
-  .\transcode-hls.ps1 -Input .\movie.mp4 -Slug nairobi-half-life -Upload
+  .\transcode-hls.ps1 -InputPath D:\goat-2026\goat-2026.mp4 -Slug goat-2026
 #>
 [CmdletBinding()]
 param(
-  # NB: do not name this '$Input' — that shadows PowerShell's automatic $Input
-  # (the pipeline enumerator), which leaves the bound value empty at runtime.
-  # The 'Input' alias keeps `-Input <path>` working for callers/muscle memory.
   [Parameter(Mandatory = $true)][Alias('Input')][string]$InputPath,
   [Parameter(Mandatory = $true)][string]$Slug,
-  [switch]$Upload,
-  [string]$R2Bucket = 'birgenai-assets'
+  [double]$DurationTolerance = 0.02,
+  [int]$MaxSourceDecodeErrors = 200,
+  [switch]$Force
 )
 
-$ErrorActionPreference = 'Stop'
+# NB: 'Continue', NOT 'Stop'. ffmpeg/ffprobe write normal warnings to stderr (e.g.
+# "Referenced QT chapter track not found"); under 'Stop' PowerShell escalates the
+# first such line into a fatal NativeCommandError, killing the transcode before it
+# starts. Every real failure here is caught explicitly (Test-Path throws,
+# $LASTEXITCODE checks, the completeness gate throw), so 'Continue' loses no safety.
+$ErrorActionPreference = 'Continue'
 
-# -LiteralPath: source filenames contain [ ] (e.g. "[1080p] [5.1] [YTS.BZ]"), which
-# Test-Path would otherwise treat as wildcard character classes and fail to match.
 if (-not (Test-Path -LiteralPath $InputPath)) { throw "Input not found: $InputPath" }
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-  throw "ffmpeg is not installed. Try: choco install ffmpeg / winget install Gyan.FFmpeg"
-}
+if (-not (Get-Command ffmpeg  -ErrorAction SilentlyContinue)) { throw "ffmpeg not installed. winget install Gyan.FFmpeg" }
+if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) { throw "ffprobe not installed (ships with ffmpeg)." }
 
-$Out = Join-Path (Get-Location) "hls/$Slug"
-$null = New-Item -ItemType Directory -Force -Path "$Out/1080p", "$Out/720p", "$Out/480p", "$Out/360p"
+$here = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$Out  = Join-Path $here "hls/$Slug"
+foreach ($r in '1080p','720p','480p','360p') { $null = New-Item -ItemType Directory -Force -Path (Join-Path $Out $r) }
 
-Write-Host "-> Transcoding 4-bitrate ABR ladder for '$Slug'..." -ForegroundColor Cyan
-
-# All scaling in filter_complex — FFmpeg 6+ errors if -vf is used on a stream
-# already produced by -filter_complex.
-# Aspect-preserving: scale to FIT inside each box (force_original_aspect_ratio=decrease),
-# then pad to the exact rendition size so the encoded frame matches the master.m3u8
-# RESOLUTION tags without ever stretching the picture. For a true 16:9 source the pad is
-# a no-op; a 1920x1024 (or other) source gets thin letterbox bars instead of distortion.
-$scaleChain = {
-  param($w, $h, $out)
-  "scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos:force_divisible_by=2," +
-  "pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[$out]"
-}
-$filterComplex = '[0:v]split=4[v1][v2][v3][v4];' +
-  "[v1]$(& $scaleChain 1920 1080 'v1s');" +
-  "[v2]$(& $scaleChain 1280 720  'v2s');" +
-  "[v3]$(& $scaleChain 854  480  'v3s');" +
-  "[v4]$(& $scaleChain 640  360  'v4s')"
-
-$ffArgs = @(
-  '-y', '-i', $InputPath,
-  '-filter_complex', $filterComplex,
-
-  '-map', '[v1s]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '20', '-preset', 'fast',
-  '-b:v', '4500k', '-maxrate', '4800k', '-bufsize', '9000k',
-  '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
-  '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
-  '-hls_segment_filename', "$Out/1080p/seg%03d.ts", "$Out/1080p/stream.m3u8",
-
-  '-map', '[v2s]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '22', '-preset', 'fast',
-  '-b:v', '2500k', '-maxrate', '2800k', '-bufsize', '5000k',
-  '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
-  '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
-  '-hls_segment_filename', "$Out/720p/seg%03d.ts", "$Out/720p/stream.m3u8",
-
-  '-map', '[v3s]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '24', '-preset', 'fast',
-  '-b:v', '1000k', '-maxrate', '1200k', '-bufsize', '2000k',
-  '-c:a', 'aac', '-b:a', '96k', '-ac', '2',
-  '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
-  '-hls_segment_filename', "$Out/480p/seg%03d.ts", "$Out/480p/stream.m3u8",
-
-  '-map', '[v4s]', '-map', '0:a',
-  '-c:v', 'libx264', '-crf', '28', '-preset', 'fast',
-  '-b:v', '400k', '-maxrate', '500k', '-bufsize', '1000k',
-  '-c:a', 'aac', '-b:a', '64k', '-ac', '2',
-  '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0', '-hls_playlist_type', 'vod',
-  '-hls_segment_filename', "$Out/360p/seg%03d.ts", "$Out/360p/stream.m3u8"
+$Renditions = @(
+  [pscustomobject]@{ Name='1080p'; W=1920; H=1080; Crf=20; Bv='4500k'; MaxRate='4800k'; BufSize='9000k'; Ab='128k' }
+  [pscustomobject]@{ Name='720p';  W=1280; H=720;  Crf=22; Bv='2500k'; MaxRate='2800k'; BufSize='5000k'; Ab='128k' }
+  [pscustomobject]@{ Name='480p';  W=854;  H=480;  Crf=24; Bv='1000k'; MaxRate='1200k'; BufSize='2000k'; Ab='96k'  }
+  [pscustomobject]@{ Name='360p';  W=640;  H=360;  Crf=28; Bv='400k';  MaxRate='500k';  BufSize='1000k'; Ab='64k'  }
 )
 
-& ffmpeg @ffArgs
+function Test-RenditionComplete([string]$rdir) {
+  $m3u8 = Join-Path $rdir 'stream.m3u8'
+  if (-not (Test-Path -LiteralPath $m3u8)) { return $false }
+  $tail = Get-Content -LiteralPath $m3u8 -Tail 1 -ErrorAction SilentlyContinue
+  return ($tail -eq '#EXT-X-ENDLIST')
+}
 
-Write-Host "-> Writing master.m3u8" -ForegroundColor Cyan
+function Get-PlaylistDuration([string]$m3u8) {
+  if (-not (Test-Path -LiteralPath $m3u8)) { return 0.0 }
+  $sum = 0.0
+  foreach ($l in Get-Content -LiteralPath $m3u8) { if ($l -match '^#EXTINF:([0-9.]+)') { $sum += [double]$Matches[1] } }
+  return $sum
+}
+
+# Source duration up front, so we can sanity-check it and gate on it at the end.
+$srcDur = [double](& ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- "$InputPath" 2>$null)
+if (-not $srcDur -or $srcDur -le 0) { throw "Could not read source duration for $InputPath" }
+$srcTs = [TimeSpan]::FromSeconds($srcDur)
+Write-Host ("-> Source: {0}  ({1:00}:{2:00}:{3:00})" -f (Split-Path $InputPath -Leaf), [int]$srcTs.TotalHours, $srcTs.Minutes, $srcTs.Seconds) -ForegroundColor Cyan
+
+# --- encode each rendition single-pass --------------------------------------
+foreach ($r in $Renditions) {
+  $rdir = Join-Path $Out $r.Name
+  if (-not $Force -and (Test-RenditionComplete $rdir)) {
+    Write-Host "   $($r.Name): already complete - skipping" -ForegroundColor DarkGray
+    continue
+  }
+  # Clear any partial output from an interrupted run so segment sets never mix.
+  Get-ChildItem -LiteralPath $rdir -Filter '*.ts' -ErrorAction SilentlyContinue | Remove-Item -Force
+  Remove-Item -LiteralPath (Join-Path $rdir 'stream.m3u8') -Force -ErrorAction SilentlyContinue
+
+  Write-Host "   $($r.Name): encoding single-pass ($($r.W)x$($r.H))..." -ForegroundColor Cyan
+  # Aspect-preserving (letterbox/pillarbox, never stretch); 5.1 -> stereo (-ac 2,
+  # required for in-browser HLS). +genpts rebuilds timestamps so a source with DTS
+  # gaps still encodes start-to-finish instead of aborting early.
+  $vf = "scale=$($r.W):$($r.H):force_original_aspect_ratio=decrease:flags=lanczos:force_divisible_by=2," +
+        "pad=$($r.W):$($r.H):(ow-iw)/2:(oh-ih)/2,setsar=1"
+  # Capture ffmpeg's stderr so we can detect a CORRUPT source for free (the encode
+  # already decodes the whole file). A damaged source emits thousands of decoder
+  # errors and can only ever produce a glitchy video, so we fail rather than ship it.
+  $errLog = Join-Path $rdir 'encode.err'
+  & ffmpeg -hide_banner -loglevel error -y -fflags +genpts -i $InputPath `
+      -map 0:v:0 -map 0:a:0 `
+      -c:v libx264 -crf $r.Crf -preset fast -vf $vf `
+      -b:v $r.Bv -maxrate $r.MaxRate -bufsize $r.BufSize `
+      -c:a aac -b:a $r.Ab -ac 2 `
+      -f hls -hls_time 6 -hls_list_size 0 -hls_playlist_type vod -hls_flags independent_segments `
+      -hls_segment_filename (Join-Path $rdir 'seg%05d.ts') `
+      (Join-Path $rdir 'stream.m3u8') 2> $errLog
+  if ($LASTEXITCODE -ne 0 -or -not (Test-RenditionComplete $rdir)) {
+    throw "Encode failed/incomplete for $($r.Name) (re-run to resume from this rendition)."
+  }
+  $decErrs = @(Get-Content -LiteralPath $errLog -ErrorAction SilentlyContinue | Where-Object {
+    $_ -match 'Invalid NAL unit size|missing picture in access unit|Error submitting packet|reference picture missing|Missing reference picture|mmco:'
+  }).Count
+  Remove-Item -LiteralPath $errLog -Force -ErrorAction SilentlyContinue
+  if ($decErrs -gt $MaxSourceDecodeErrors) {
+    throw ("SOURCE CORRUPT for ${Slug}: the $($r.Name) encode hit $decErrs decoder errors. " +
+           "The source file ($InputPath) is damaged and would produce a glitchy video. " +
+           "Re-download a clean copy, then re-run. (Run verify-source-integrity.ps1 to confirm.)")
+  }
+  $rd = Get-PlaylistDuration (Join-Path $rdir 'stream.m3u8')
+  Write-Host ("      done: {0} segs, {1:N0}s" -f (Get-ChildItem -LiteralPath $rdir -Filter '*.ts').Count, $rd) -ForegroundColor Green
+}
+
+# --- COMPLETENESS GATE ------------------------------------------------------
+$hlsDur = Get-PlaylistDuration (Join-Path $Out '1080p/stream.m3u8')
+$drift = [math]::Abs($hlsDur - $srcDur) / $srcDur
+$pct = [int](($hlsDur / $srcDur) * 100)
+if ($drift -gt $DurationTolerance) {
+  throw ("COMPLETENESS GATE FAILED for ${Slug}: HLS {0:N0}s is {1}% of source {2:N0}s (drift {3:P1} > {4:P0}). " -f $hlsDur, $pct, $srcDur, $drift, $DurationTolerance) +
+        "No master.m3u8 written - this title will not upload/go live. If the SOURCE itself is short, replace it; otherwise re-run."
+}
+Write-Host ("-> Completeness OK: HLS is {0}% of source (drift {1:P2})." -f $pct, $drift) -ForegroundColor Green
+
+# --- master + poster --------------------------------------------------------
 @'
 #EXTM3U
 #EXT-X-VERSION:3
@@ -107,36 +146,9 @@ Write-Host "-> Writing master.m3u8" -ForegroundColor Cyan
 480p/stream.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=464000,RESOLUTION=640x360,CODECS="avc1.64001e,mp4a.40.2"
 360p/stream.m3u8
-'@ | Out-File -FilePath "$Out/master.m3u8" -Encoding ascii
+'@ | Out-File -FilePath (Join-Path $Out 'master.m3u8') -Encoding ascii
 
-Write-Host "-> Generating poster frame" -ForegroundColor Cyan
-& ffmpeg -y -ss '00:00:10' -i $InputPath -frames:v 1 -update 1 -q:v 2 -vf 'scale=1280:-1' "$Out/poster.jpg"
+Write-Host "-> Poster frame" -ForegroundColor Cyan
+& ffmpeg -hide_banner -loglevel error -y -ss '00:00:10' -i $InputPath -frames:v 1 -update 1 -q:v 2 -vf 'scale=1280:-1' (Join-Path $Out 'poster.jpg')
 
 Write-Host "OK Output: $Out" -ForegroundColor Green
-
-if ($Upload) {
-  if (-not (Get-Command wrangler -ErrorAction SilentlyContinue)) {
-    throw "wrangler not installed. npm i -g wrangler"
-  }
-  Write-Host "-> Uploading to R2 bucket '$R2Bucket' under Videos/$Slug/" -ForegroundColor Cyan
-
-  Get-ChildItem -Path $Out -Recurse -File | ForEach-Object {
-    $rel = $_.FullName.Substring($Out.Length + 1).Replace('\', '/')
-    $key = "Videos/$Slug/$rel"
-    $ct = switch -Regex ($rel) {
-      '\.m3u8$' { 'application/vnd.apple.mpegurl' ; break }
-      '\.ts$'   { 'video/mp2t' ; break }
-      '\.(jpe?g)$' { 'image/jpeg' ; break }
-      '\.png$'  { 'image/png' ; break }
-      default   { 'application/octet-stream' }
-    }
-    Write-Host "  $key"
-    & wrangler r2 object put "$R2Bucket/$key" --file=$_.FullName --content-type=$ct --remote
-    if ($LASTEXITCODE -ne 0) {
-      throw "wrangler failed for '$key' (exit $LASTEXITCODE). Create bucket if needed: wrangler r2 bucket create $R2Bucket"
-    }
-  }
-  Write-Host "OK Uploaded all objects." -ForegroundColor Green
-  Write-Host "Master playlist URL (if bucket has public domain):"
-  Write-Host "  https://<R2_PUBLIC_HOST>/Videos/$Slug/master.m3u8"
-}

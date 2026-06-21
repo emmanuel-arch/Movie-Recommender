@@ -8,17 +8,25 @@
  *   - warn             : warn threshold
  *   - percent          : totalSeconds / cap
  *   - isOverCap        : boolean
- *   - isPremium        : profile.plan === 'premium'
+ *   - isPremium        : authoritative entitlement (shared User row), via useEntitlement
  *   - notifications    : pending (unseen) notifications
  *   - dismissNotification(id) : mark seen in DB
+ *
+ * The cap is only enforced once entitlement has resolved to "not premium" — while
+ * it is still loading, or if the read errored, we treat the user as un-gated so an
+ * infra hiccup (or the first render) never flashes a paywall at a paying customer.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import type { Notification } from '@/lib/supabase/types';
 
-const DEFAULT_CAP = Number(process.env.NEXT_PUBLIC_FREE_TIER_CAP_SECONDS ?? 72_000);
-const DEFAULT_WARN = Number(process.env.NEXT_PUBLIC_WARN_THRESHOLD_SECONDS ?? 57_600);
+// Free tier: 3 hours of watch time per calendar month (~2 feature films), warn at
+// ~80% (2h24m). Override per-env with NEXT_PUBLIC_FREE_TIER_CAP_SECONDS /
+// NEXT_PUBLIC_WARN_THRESHOLD_SECONDS so the funnel can be A/B-tuned without a deploy.
+const DEFAULT_CAP = Number(process.env.NEXT_PUBLIC_FREE_TIER_CAP_SECONDS ?? 10_800);
+const DEFAULT_WARN = Number(process.env.NEXT_PUBLIC_WARN_THRESHOLD_SECONDS ?? 8_640);
 
 export interface ScreenTimeState {
   loading: boolean;
@@ -35,15 +43,18 @@ export interface ScreenTimeState {
 }
 
 export function useScreenTime(): ScreenTimeState {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
+  const { isPremium, loading: entLoading, error: entError } = useEntitlement();
 
   const [totalSeconds, setTotalSeconds] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isPremium = profile?.plan === 'premium';
   const cap = DEFAULT_CAP;
   const warn = DEFAULT_WARN;
+  // Only gate once we KNOW the user is not premium. Unknown (loading) or a failed
+  // entitlement read => don't enforce, so we never wrongly paywall a payer.
+  const enforce = !isPremium && !entLoading && !entError;
 
   const load = useCallback(async () => {
     if (!user) {
@@ -86,8 +97,8 @@ export function useScreenTime(): ScreenTimeState {
     cap,
     warn,
     percent,
-    isOverCap: !isPremium && totalSeconds >= cap,
-    isWarning: !isPremium && totalSeconds >= warn && totalSeconds < cap,
+    isOverCap: enforce && totalSeconds >= cap,
+    isWarning: enforce && totalSeconds >= warn && totalSeconds < cap,
     isPremium,
     notifications,
     dismissNotification,

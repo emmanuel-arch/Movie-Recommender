@@ -1,10 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { Check, Clock, Sparkles, Zap, Globe2, Tv2, Infinity as InfinityIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { useAuth } from '@/components/AuthProvider';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import { PREMIUM_MONTHLY_KES_LIST, PREMIUM_MONTHLY_KES_PROMO } from '@/lib/billing';
+import { moviesPremiumCheckoutUrl } from '@/lib/premiumCheckout';
 
 const BASE_PREMIUM_FEATURES = [
   'Unlimited watch time',
@@ -26,7 +27,7 @@ const PLANS = [
     features: [
       'Unlimited browsing & search',
       'Rate movies, get personalized picks',
-      '20 hours of watch time per month',
+      '3 hours of watch time per month',
       'Ad-supported (pre-roll)',
       'Up to 480p streaming',
     ],
@@ -70,9 +71,8 @@ function PriceStrikeX({ listKes }: { listKes: number }) {
 }
 
 export default function UpgradePage() {
-  const router = useRouter();
-  const { user, profile } = useAuth();
-  const isPremium = profile?.plan === 'premium';
+  const { user } = useAuth();
+  const { isPremium } = useEntitlement();
 
   return (
     <div className="min-h-screen bg-birgen-black">
@@ -165,10 +165,11 @@ export default function UpgradePage() {
                   className="w-full py-3 bg-birgen-red hover:bg-birgen-red-light disabled:bg-birgen-red/40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-md transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
                   onClick={() => {
                     if (!user) {
-                      window.location.href = '/?auth=1&next=/transact';
+                      window.location.href = '/?auth=1&next=/upgrade';
                       return;
                     }
-                    router.push('/transact');
+                    // Centralized checkout: hand off to the BirgenAI wallet, return home once paid.
+                    window.location.href = moviesPremiumCheckoutUrl(`${window.location.origin}/`);
                   }}
                 >
                   <Sparkles className="w-4 h-4" />
@@ -187,11 +188,7 @@ export default function UpgradePage() {
         </div>
 
         <p className="text-center text-birgen-muted text-xs">
-          Pay securely with M-PESA on the next step.{' '}
-          <Link href="/transact" className="text-birgen-silver underline-offset-2 hover:underline">
-            Open checkout
-          </Link>
-          {' · '}
+          Pay securely with M-PESA — the prompt comes to your phone.{' '}
           <Link href="/" className="text-birgen-silver underline-offset-2 hover:underline">
             Back to browse
           </Link>

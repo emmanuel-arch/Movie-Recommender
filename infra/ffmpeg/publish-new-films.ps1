@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-  One-shot, RESUMABLE pipeline for the 6 new 1080p films:
+  One-shot, RESUMABLE pipeline for the 5 new 1080p films:
   transcode -> subtitles (.srt -> .vtt) -> card/backdrop frame -> upload to R2
   -> verify every object returns HTTP 200 -> flip the title live in the catalog.
 
 .DESCRIPTION
   This wraps the existing two-step manual flow (transcode-hls.ps1 + the rclone
-  uploader) into a single command that does ALL of the work for ALL 6 titles and
+  uploader) into a single command that does ALL of the work for ALL 5 titles and
   is safe to kill at any moment - close the laptop, lose power, Ctrl-C - then just
   re-run it. It picks up exactly where it left off because every stage is either:
 
@@ -17,8 +17,8 @@
 
   Per title the stages are, in order:
     1. TRANSCODE  -> infra\ffmpeg\hls\<slug>\  (4-bitrate H.264 ABR + master + poster)
-                     re-encodes HEVC (Crime 101) to browser-safe H.264 and downmixes
-                     5.1 -> stereo, both required for in-browser HLS playback.
+                     re-encodes to browser-safe H.264 and downmixes 5.1 -> stereo,
+                     both required for in-browser HLS playback.
     2. ASSETS     -> English/French .srt converted to WebVTT (our format) and a
                      1920x1080 backdrop frame grab (so the Netflix card looks right
                      before you upload bespoke card art).
@@ -33,14 +33,14 @@
   negative-cache a just-uploaded key; the loop simply retries).
 
 .PARAMETER Only
-  Restrict to a subset of slugs, e.g. -Only crime-101-2026,apex-2026
+  Restrict to a subset of slugs, e.g. -Only f1-the-movie-2025,goat-2026
 
 .EXAMPLE
   cd "C:\Users\Arch Bishop\Documents\BIRGEN AI 2.0\movie-recommender\infra\ffmpeg"
-  .\publish-new-films.ps1                       # do everything for all 6, resume-safe
+  .\publish-new-films.ps1                       # do everything for all 5, resume-safe
 
 .EXAMPLE
-  .\publish-new-films.ps1 -Only crime-101-2026  # just one title
+  .\publish-new-films.ps1 -Only f1-the-movie-2025  # just one title
 
 .EXAMPLE
   .\publish-new-films.ps1 -DryRun               # report state; transcode/upload/edit nothing
@@ -85,19 +85,22 @@ $StateDir = Join-Path $here '.pipeline-state'
 $null = New-Item -ItemType Directory -Force -Path $StateDir
 $CatalogPath = Resolve-Path (Join-Path $here '..\..\web\lib\catalog.ts')
 
-# --- The 6 new titles -------------------------------------------------------
+# --- The 5 new titles -------------------------------------------------------
 # slug MUST equal the R2 folder (Videos/films/<slug>/master.m3u8). assetKey keys
 # the subtitle + image filenames (must match lib\catalog.ts).
+# Source layout: C:\Videos\<slug>\<slug>.mp4
+# Sources live on D:\<slug>\<slug>.mp4 (all 7 present there).
 $Films = @(
-  [pscustomobject]@{ Slug='crime-101-2026';          AssetKey='crime-101-2026';          Source='C:\Videos\new\Crime 101 2026 1080p WEB Line HEVC x265 BONE.mkv' }
-  [pscustomobject]@{ Slug='apex-2026';               AssetKey='apex-2026';               Source='C:\Videos\new\Apex (2026) [1080p] [WEBRip] [5.1] [YTS.BZ]\Apex.2026.1080p.WEBRip.x264.AAC5.1-[YTS.BZ].mp4' }
-  [pscustomobject]@{ Slug='mercy-2026';              AssetKey='mercy-2026';              Source='C:\Videos\new\Mercy (2026) [HYBRID] [1080p] [BluRay] [5.1] [YTS.BZ]\Mercy.2026.HYBRID.1080p.BluRay.x264.AAC5.1-[YTS.BZ].mp4' }
-  [pscustomobject]@{ Slug='send-help-2026';          AssetKey='send-help-2026';          Source='C:\Videos\new\Send Help (2026) [1080p] [BluRay] [5.1] [YTS.BZ]\Send.Help.2026.1080p.BluRay.x264.AAC5.1-[YTS.BZ].mp4' }
-  [pscustomobject]@{ Slug='jack-ryan-ghost-war-2026'; AssetKey='jack-ryan-ghost-war-2026'; Source='C:\Videos\new\Jack Ryan Ghost War (2026) [1080p] [WEBRip] [5.1] [YTS.BZ]\Jack.Ryan.Ghost.War.2026.1080p.WEBRip.x264.AAC5.1-[YTS.BZ].mp4' }
-  [pscustomobject]@{ Slug='the-wrecking-crew-2026';  AssetKey='the-wrecking-crew-2026';  Source='C:\Videos\new\The Wrecking Crew (2026) [1080p] [WEBRip] [5.1] [YTS.BZ]\The.Wrecking.Crew.2026.1080p.WEBRip.x264.AAC5.1-[YTS.BZ].mp4' }
+  [pscustomobject]@{ Slug='f1-the-movie-2025';     AssetKey='f1-the-movie-2025';     Source='D:\f1-the-movie-2025\f1-the-movie-2025.mp4' }
+  [pscustomobject]@{ Slug='goat-2026';             AssetKey='goat-2026';             Source='D:\goat-2026\goat-2026.mp4' }
+  [pscustomobject]@{ Slug='hoppers-2026';          AssetKey='hoppers-2026';          Source='D:\hoppers-2026\hoppers-2026.mp4' }
+  [pscustomobject]@{ Slug='in-the-grey-2026';      AssetKey='in-the-grey-2026';      Source='D:\in-the-grey-2026\in-the-grey-2026.mp4' }
+  [pscustomobject]@{ Slug='italianna-2026';        AssetKey='italianna-2026';        Source='D:\italianna-2026\italianna-2026.mp4' }
+  [pscustomobject]@{ Slug='michael-2026';          AssetKey='michael-2026';          Source='D:\michael-2026\michael-2026.mp4' }
+  [pscustomobject]@{ Slug='mortal-kombat-II-2026'; AssetKey='mortal-kombat-II-2026'; Source='D:\mortal-kombat-II-2026\mortal-kombat-II-2026.mp4' }
 )
 if ($Only) { $Films = $Films | Where-Object { $Only -contains $_.Slug } }
-if (-not $Films) { throw "No films selected. Known slugs: crime-101-2026, apex-2026, mercy-2026, send-help-2026, jack-ryan-ghost-war-2026, the-wrecking-crew-2026" }
+if (-not $Films) { throw "No films selected. Known slugs: f1-the-movie-2025, goat-2026, hoppers-2026, in-the-grey-2026, italianna-2026, michael-2026, mortal-kombat-II-2026" }
 
 # --- tools ------------------------------------------------------------------
 if (-not (Get-Command ffmpeg  -ErrorAction SilentlyContinue)) { throw "ffmpeg not found. winget install Gyan.FFmpeg" }
@@ -164,16 +167,37 @@ function Convert-SrtToVtt {
 }
 
 # Find the best source .srt for a language inside the movie's own folder.
+# Exact-name candidates first (cleanest match), then a wildcard fallback over Subs\
+# by the language's 3-letter tag, then (English only) the release .srt at the movie
+# root. This catches the real-world naming variety in YTS rips, e.g.:
+#   michael:   Subs\SDH.eng.srt          (no plain English.srt)  -> en
+#   italianna: Subs\Francais (Canada).fre.srt                    -> fr
+# Wildcards keep this ASCII-safe (we never type the accented filename literally).
 function Find-Srt {
   param([string]$SourceFile, [string]$Lang)
   $folder = Split-Path -Parent $SourceFile
+  $subs   = Join-Path $folder 'Subs'
   $base   = [System.IO.Path]::GetFileNameWithoutExtension($SourceFile)
   $cands = switch ($Lang) {
-    'en' { @("$folder\Subs\English.srt", "$folder\Subs\eng.srt", "$folder\English.srt", "$folder\$base.srt", "$folder\Subs\en.srt") }
-    'fr' { @("$folder\Subs\fre.srt", "$folder\Subs\French.srt", "$folder\Subs\fra.srt", "$folder\Subs\fr.srt") }
+    'en' { @("$subs\English.srt", "$subs\English (CC).eng.srt", "$subs\eng.srt", "$subs\SDH.eng.srt", "$subs\English.eng.srt", "$folder\English.srt", "$folder\$base.srt", "$subs\en.srt") }
+    'fr' { @("$subs\fre.srt", "$subs\French.srt", "$subs\fra.srt", "$subs\fr.srt") }
     default { @() }
   }
   foreach ($c in $cands) { if (Test-Path -LiteralPath $c) { return (Resolve-Path -LiteralPath $c).Path } }
+
+  # wildcard fallback: any *.<tag>.srt in Subs\ (prefer the largest = fullest track).
+  $tag = if ($Lang -eq 'en') { 'eng' } elseif ($Lang -eq 'fr') { 'fre' } else { $null }
+  if ($tag) {
+    $w = Get-ChildItem -LiteralPath $subs -Filter "*.$tag.srt" -File -ErrorAction SilentlyContinue |
+         Sort-Object Length -Descending | Select-Object -First 1
+    if ($w) { return $w.FullName }
+  }
+  # English last resort: the release-named .srt sitting at the movie folder root
+  # (these YTS English rips keep the main English track there; other langs go in Subs\).
+  if ($Lang -eq 'en') {
+    $root = Get-ChildItem -LiteralPath $folder -Filter '*.srt' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($root) { return $root.FullName }
+  }
   return $null
 }
 

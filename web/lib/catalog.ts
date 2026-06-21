@@ -280,6 +280,180 @@ export const CATALOG: CatalogEntry[] = [
   // Order below = user-requested HD-row sequence (Apex first → Wrecking Crew last);
   // createdAt is monotonically decreasing so hdFeaturedEntries() preserves it.
   // METADATA IS BEST-EFFORT — verify cast/director/rating/runtime before the demo.
+  // ── NEW 1080p drop (2026-06-19) — leads the HD row (newest createdAt). ────────
+  // 4 are already transcoded+uploaded+verified in R2 (playable:true). 3 are still
+  // being transcoded; they carry // FLIP:<slug> tokens so publish-new-films.ps1 sets
+  // playable:true after upload+verify. media.backdrop points at the real frame-grab
+  // backdrop so cards/popups render even before bespoke card art is uploaded.
+  // METADATA IS BEST-EFFORT — verify displayTitle/cast/director/runtime/rating/genres.
+  sec('Now Streaming in HD', {
+    movieId: 91000513,
+    slug: 'f1-the-movie-2025',
+    assetKey: 'f1-the-movie-2025',
+    displayTitle: 'F1',
+    year: 2025,
+    runtimeMinutes: 155,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 7.8,
+    overview:
+      'A Formula 1 legend is coaxed out of retirement to mentor a brilliant, reckless rookie - and chase one last shot at greatness on the sport\'s biggest stage.',
+    genres: ['Action', 'Drama', 'Sport'],
+    playable: true,
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Brad Pitt', 'Damson Idris', 'Kerry Condon', 'Javier Bardem'], // verify
+    director: 'Joseph Kosinski', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-f1-the-movie-2025.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T20:00:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000514,
+    slug: 'goat-2026',
+    assetKey: 'goat-2026',
+    displayTitle: 'Goat',
+    year: 2026,
+    runtimeMinutes: 95,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 6.5,
+    overview:
+      'A gifted underdog battles doubt, fierce rivalry and the crushing weight of expectation in a high-energy story about earning the title of greatest of all time.',
+    genres: ['Drama', 'Sport'], // verify
+    playable: false, // FLIP:goat-2026
+    comingSoon: true, // FLIP:goat-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['TBA'], // verify
+    director: 'TBA', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-goat-2026.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T19:55:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000515,
+    slug: 'hoppers-2026',
+    assetKey: 'hoppers-2026',
+    displayTitle: 'Hoppers',
+    year: 2026,
+    runtimeMinutes: 100,
+    maturity: 'PG',
+    tmdbVoteAverage: 6.8,
+    overview:
+      'A teenager transfers her mind into the body of a robotic creature to talk with wildlife - and discovers a wild new world, and a fight to protect it, in this animated comedy adventure.',
+    genres: ['Animation', 'Comedy', 'Adventure', 'Family'],
+    playable: true,
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['TBA'], // verify
+    director: 'TBA', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-hoppers-2026.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T19:50:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000516,
+    slug: 'in-the-grey-2026',
+    assetKey: 'in-the-grey-2026',
+    displayTitle: 'In the Grey',
+    year: 2026,
+    runtimeMinutes: 120,
+    maturity: 'R',
+    tmdbVoteAverage: 6.5,
+    overview:
+      'Two elite private-security operatives are forced into a moral grey zone when a high-risk protection job spirals into a desperate fight for survival.',
+    genres: ['Action', 'Thriller'],
+    playable: false, // FLIP:in-the-grey-2026
+    comingSoon: true, // FLIP:in-the-grey-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['TBA'], // verify
+    director: 'Guy Ritchie', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-in-the-grey-2026.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T19:45:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000517,
+    slug: 'italianna-2026',
+    assetKey: 'italianna-2026',
+    displayTitle: 'Italianna',
+    year: 2026,
+    runtimeMinutes: 105,
+    maturity: 'R',
+    tmdbVoteAverage: 6.0,
+    overview:
+      'A sweeping, emotional drama of family, ambition and belonging that moves between the old country and a new life abroad.',
+    genres: ['Drama'], // verify
+    playable: true,
+    comingSoon: false,
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['TBA'], // verify
+    director: 'TBA', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-italianna-2026.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T19:40:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000518,
+    slug: 'michael-2026',
+    assetKey: 'michael-2026',
+    displayTitle: 'Michael',
+    year: 2026,
+    runtimeMinutes: 140,
+    maturity: 'PG-13',
+    tmdbVoteAverage: 7.5,
+    overview:
+      'The epic story of the King of Pop - from child star to global icon - tracing the music, the milestones and the controversies that defined a generation.',
+    genres: ['Biography', 'Drama', 'Music'],
+    playable: false, // FLIP:michael-2026
+    comingSoon: true, // FLIP:michael-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Jaafar Jackson', 'Colman Domingo', 'Nia Long', 'Miles Teller'], // verify
+    director: 'Antoine Fuqua', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-michael-2026.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T19:35:00.000Z',
+  }),
+  sec('Now Streaming in HD', {
+    movieId: 91000519,
+    slug: 'mortal-kombat-II-2026',
+    assetKey: 'mortal-kombat-II-2026',
+    displayTitle: 'Mortal Kombat II',
+    year: 2026,
+    runtimeMinutes: 130,
+    maturity: 'R',
+    tmdbVoteAverage: 6.8,
+    overview:
+      'Earthrealm\'s champions return for a brutal new tournament, facing deadlier rivals and an apocalyptic threat in the next chapter of the Mortal Kombat saga.',
+    genres: ['Action', 'Fantasy', 'Adventure'],
+    playable: false, // FLIP:mortal-kombat-II-2026
+    comingSoon: true, // FLIP:mortal-kombat-II-2026
+    hdFeatured: true,
+    kenyanOriginal: false,
+    panAfrican: false,
+    darkPsychological: false,
+    cast: ['Karl Urban', 'Lewis Tan', 'Jessica McNamee', 'Hiroyuki Sanada'], // verify
+    director: 'Simon McQuoid', // verify
+    media: { backdrop: assetUrl('/Images/backdrops/backdrop-mortal-kombat-II-2026.jpg') },
+    tagline: 'Now in full HD',
+    createdAt: '2026-06-19T19:30:00.000Z',
+  }),
   sec('Now Streaming in HD', {
     movieId: 91000508,
     slug: 'apex-2026',
