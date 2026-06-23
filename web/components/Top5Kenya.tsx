@@ -24,15 +24,21 @@ import { useMyList } from '@/hooks/useMyList';
 import { hasStream, getStreamUrl, getStreamMp4Url } from '@/lib/stream';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 import { useCardArt } from '@/hooks/useCardArt';
-import { assetUrl } from '@/lib/assets';
 import toast from 'react-hot-toast';
 import AuthModal from '@/components/AuthModal';
 import { useAuth } from '@/components/AuthProvider';
 import { announceMediaPlay } from '@/lib/mediaBus';
 import FullMoviePlayer from '@/components/FullMoviePlayer';
 import { getPlayableByMovieId } from '@/lib/playableMovies';
+import {
+  top10KenyaEntries,
+  catalogCardPath,
+  catalogBackdropPath,
+  catalogPosterPath,
+  catalogTrailerPath,
+} from '@/lib/catalog';
 
-/* ── The 5 featured movies with MovieLens IDs ─────────── */
+/* ── Top 10 card shape (built from the catalog below) ─────────── */
 interface Top5Movie {
   movieId: number;
   title: string;
@@ -51,93 +57,42 @@ interface Top5Movie {
   trailer: string;
 }
 
-const TOP5_MOVIES: Top5Movie[] = [
-  {
-    movieId: 168250,
-    title: 'Get Out (2017)',
-    displayTitle: 'Get Out',
-    year: '2017',
-    rating: '7.7',
-    maturity: 'R',
-    duration: '1h 44m',
-    overview:
-      "A young African-American visits his white girlfriend's parents for the weekend, where his simmering uneasiness about their reception of him eventually reaches a boiling point.",
-    genres: 'Horror|Thriller|Mystery',
-    genreList: ['Horror', 'Thriller', 'Mystery'],
-    poster: assetUrl('/Images/posters/poster-get-out-2017.jpg'),
-    backdrop: assetUrl('/Images/backdrops/backdrop-get-out-2017.jpg'),
-    card: assetUrl('/Images/cards/card-get-out-2017.jpg'),
-    trailer: assetUrl('/Videos/trailers/trailer-get-out-2017.mp4'),
-  },
-  {
-    movieId: 139644,
-    title: 'Sicario (2015)',
-    displayTitle: 'Sicario',
-    year: '2015',
-    rating: '7.6',
-    maturity: 'R',
-    duration: '2h 1m',
-    overview:
-      'An idealistic FBI agent is enlisted by a government task force to aid in the escalating war against drugs at the border area between the U.S. and Mexico.',
-    genres: 'Crime|Drama|Mystery',
-    genreList: ['Action', 'Crime', 'Drama'],
-    poster: assetUrl('/Images/posters/poster-sicario-2015.jpg'),
-    backdrop: assetUrl('/Images/backdrops/backdrop-sicario-2015.jpg'),
-    card: assetUrl('/Images/cards/card-sicario-2015.jpg'),
-    trailer: assetUrl('/Videos/trailers/trailer-sicario-2015.mp4'),
-  },
-  {
-    movieId: 79132,
-    title: 'Inception (2010)',
-    displayTitle: 'Inception',
-    year: '2010',
-    rating: '8.8',
-    maturity: 'PG-13',
-    duration: '2h 28m',
-    overview:
-      'A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
-    genres: 'Action|Crime|Drama|Mystery|Sci-Fi|Thriller|IMAX',
-    genreList: ['Sci-Fi', 'Action', 'Thriller'],
-    poster: assetUrl('/Images/posters/poster-inception-2010.jpg'),
-    backdrop: assetUrl('/Images/backdrops/backdrop-inception-2010.jpg'),
-    card: assetUrl('/Images/cards/card-inception-2010.jpg'),
-    trailer: assetUrl('/Videos/trailers/trailer-inception-2010.mp4'),
-  },
-  {
-    movieId: 58559,
-    title: 'Dark Knight, The (2008)',
-    displayTitle: 'The Dark Knight',
-    year: '2008',
-    rating: '9.0',
-    maturity: 'PG-13',
-    duration: '2h 32m',
-    overview:
-      'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.',
-    genres: 'Action|Crime|Drama|IMAX',
-    genreList: ['Action', 'Crime', 'Drama'],
-    poster: assetUrl('/Images/posters/poster-the-dark-knight-2008.jpg'),
-    backdrop: assetUrl('/Images/backdrops/backdrop-the-dark-knight-2008.jpg'),
-    card: assetUrl('/Images/cards/card-the-dark-knight-2008.jpg'),
-    trailer: assetUrl('/Videos/trailers/trailer-the-dark-knight-2008.mp4'),
-  },
-  {
-    movieId: 74458,
-    title: 'Shutter Island (2010)',
-    displayTitle: 'Shutter Island',
-    year: '2010',
-    rating: '8.2',
-    maturity: 'R',
-    duration: '2h 18m',
-    overview:
-      'In 1954, a U.S. Marshal investigates the disappearance of a murderer who escaped from a hospital for the criminally insane on a remote island.',
-    genres: 'Drama|Mystery|Thriller',
-    genreList: ['Mystery', 'Thriller', 'Drama'],
-    poster: assetUrl('/Images/posters/poster-shutter-island-2010.jpg'),
-    backdrop: assetUrl('/Images/backdrops/backdrop-shutter-island-2010.jpg'),
-    card: assetUrl('/Images/cards/card-shutter-island-2010.jpg'),
-    trailer: assetUrl('/Videos/trailers/trailer-shutter-island-2010.mp4'),
-  },
-];
+/** Only the original launch-5 titles ship a real trailer MP4; HD titles are play-only. */
+const TRAILER_SLUGS = new Set([
+  'get-out',
+  'sicario',
+  'inception',
+  'the-dark-knight',
+  'shutter-island',
+]);
+
+function formatRuntime(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/**
+ * "Top 10 Movies in Kenya Today" — derived from the catalog (Get Out + Sicario, then
+ * the eight broadest-appeal full-HD titles). Every entry is `playable: true`, so the
+ * card sends the viewer straight to the 1080p stream. Order = TOP10_KENYA_SLUGS.
+ */
+const TOP10_MOVIES: Top5Movie[] = top10KenyaEntries().map((e) => ({
+  movieId: e.movieId,
+  title: `${e.displayTitle} (${e.year})`,
+  displayTitle: e.displayTitle,
+  year: String(e.year),
+  rating: e.tmdbVoteAverage.toFixed(1),
+  maturity: e.maturity,
+  duration: formatRuntime(e.runtimeMinutes),
+  overview: e.overview,
+  genres: e.genres.join('|'),
+  genreList: e.genres,
+  poster: catalogPosterPath(e),
+  backdrop: catalogBackdropPath(e),
+  card: catalogCardPath(e),
+  trailer: TRAILER_SLUGS.has(e.slug) ? catalogTrailerPath(e) : '',
+}));
 
 /* ── Format time helper ─────────────────────────────────── */
 function formatTime(s: number) {
@@ -359,13 +314,15 @@ function InfoPopup({
                 <Play className="w-5 h-5 fill-black" />
                 Play Movie
               </button>
-              <button
-                onClick={onPlayTrailer}
-                className="flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-[1.03] active:scale-95 text-sm"
-              >
-                <Film className="w-4 h-4" />
-                Watch Trailer
-              </button>
+              {movie.trailer && (
+                <button
+                  onClick={onPlayTrailer}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-[1.03] active:scale-95 text-sm"
+                >
+                  <Film className="w-4 h-4" />
+                  Watch Trailer
+                </button>
+              )}
               <button
                 onClick={onToggleList}
                 className="flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-md border border-white/10 transition-all hover:scale-[1.03] active:scale-95 text-sm"
@@ -785,7 +742,7 @@ export default function Top5Kenya() {
   const { user } = useAuth();
 
   const playFullMovie = (idx: number) => {
-    const movie = TOP5_MOVIES[idx];
+    const movie = TOP10_MOVIES[idx];
     const slug = movie ? getPlayableByMovieId(movie.movieId)?.slug ?? null : null;
     if (slug) setMoviePlayerSlug(slug);
     else setTrailerPlayer({ open: true, startIndex: idx, streamMode: true }); // fallback
@@ -836,7 +793,7 @@ export default function Top5Kenya() {
   // Auth-gated for streamable titles.
   const openMovie = (idx: number) => {
     setInfoMovie(null);
-    const movie = TOP5_MOVIES[idx];
+    const movie = TOP10_MOVIES[idx];
     if (movie && hasStream(movie.movieId) && !user) {
       setPendingPlayIdx(idx);
       return;
@@ -850,17 +807,17 @@ export default function Top5Kenya() {
         {/* Section header */}
         <div className="mb-4 px-4 sm:px-6 lg:px-8">
           <h2 className="text-xl sm:text-2xl font-bold text-white">
-            Top 5 Movies in Kenya Today
+            Top 10 Movies in Kenya Today
           </h2>
         </div>
 
         {/* Red accent line */}
         <div className="h-px bg-gradient-to-r from-birgen-red via-birgen-red/30 to-transparent mx-4 sm:mx-6 lg:mx-8 mb-5" />
 
-        {/* 5-column grid — all movies visible, equal spacing */}
+        {/* 5-column grid — 10 ranked titles wrap to two rows on desktop */}
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {TOP5_MOVIES.map((movie, idx) => (
+            {TOP10_MOVIES.map((movie, idx) => (
               <Top5Card
                 key={movie.movieId}
                 movie={movie}
@@ -882,13 +839,13 @@ export default function Top5Kenya() {
           movie={infoMovie}
           onClose={() => setInfoMovie(null)}
           onPlayMovie={() => {
-            const idx = TOP5_MOVIES.findIndex(
+            const idx = TOP10_MOVIES.findIndex(
               (m) => m.movieId === infoMovie.movieId,
             );
             openMovie(idx >= 0 ? idx : 0);
           }}
           onPlayTrailer={() => {
-            const idx = TOP5_MOVIES.findIndex(
+            const idx = TOP10_MOVIES.findIndex(
               (m) => m.movieId === infoMovie.movieId,
             );
             openTrailer(idx >= 0 ? idx : 0);
@@ -903,7 +860,7 @@ export default function Top5Kenya() {
       {/* Fullscreen trailer player */}
       {trailerPlayer.open && (
         <TrailerPlayer
-          movies={TOP5_MOVIES}
+          movies={TOP10_MOVIES}
           startIndex={trailerPlayer.startIndex}
           onClose={() => setTrailerPlayer({ open: false, startIndex: 0, streamMode: false })}
           onRateMovie={handleRate}
@@ -925,7 +882,7 @@ export default function Top5Kenya() {
       {pendingPlayIdx !== null && (
         <AuthModal
           title="You're 1 click away from watching"
-          subtitle={`Sign up to resume ${TOP5_MOVIES[pendingPlayIdx].displayTitle} across devices`}
+          subtitle={`Sign up to resume ${TOP10_MOVIES[pendingPlayIdx].displayTitle} across devices`}
           onClose={() => setPendingPlayIdx(null)}
           onContinueGuest={() => {
             const idx = pendingPlayIdx;

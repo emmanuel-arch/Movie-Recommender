@@ -9,18 +9,17 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
+import { createAccountUrl } from '@/lib/hubUrl';
 
 export default function WelcomePage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
 
+  // Account creation is centralized at the BirgenAI Hub — funnel the CTA there
+  // (full-page navigation, since it's a different origin in production).
   const onGetStarted = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = email.trim();
-    const q = trimmed ? `?email=${encodeURIComponent(trimmed)}` : '';
-    router.push(`/signup${q}`);
+    window.location.href = createAccountUrl(email);
   };
 
   return (

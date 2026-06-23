@@ -154,6 +154,87 @@ export function similarCatalogEntries(entry: CatalogEntry, n = 6): CatalogEntry[
   return scored.slice(0, n).map((s) => s.c);
 }
 
+/** Every currently-streamable title (the top rows of the home page are built only from these). */
+export function playableEntries(): CatalogEntry[] {
+  return CATALOG.filter((c) => c.playable);
+}
+
+/**
+ * The curated "Top 10 Movies in Kenya Today" showcase, in rank order.
+ * Get Out + Sicario are retained from the original Top 5; the remaining 8 are the
+ * broadest-appeal full-HD (1080p) titles from "Now Streaming in HD" so the most
+ * prominent row sends viewers straight to the highest-quality streams. Every slug
+ * here MUST be `playable: true` in the catalog above.
+ */
+export const TOP10_KENYA_SLUGS = [
+  'get-out',
+  'apex-2026',
+  'sicario',
+  'fast-x-2023',
+  'deadpool-2016',
+  'send-help-2026', // first card of the second row on desktop (5-up grid)
+  'f1-the-movie-2025',
+  'michael-2026',
+  'mortal-kombat-II-2026',
+  'mission-impossible-rogue-nation-2015',
+] as const;
+
+export function top10KenyaEntries(): CatalogEntry[] {
+  return TOP10_KENYA_SLUGS.map((slug) => CATALOG.find((c) => c.slug === slug)).filter(
+    (c): c is CatalogEntry => !!c,
+  );
+}
+
+/**
+ * Personalised "Recommended for you" over the PLAYABLE catalogue only.
+ *
+ * Taste signal is built from two sources the app already tracks:
+ *   1. Star ratings  — each rated title nudges its genres by (rating − 2.5), so a
+ *      5★ adds +2.5 to its genres while a 1★ subtracts 1.5 (you watch *less* of what
+ *      you dislike).
+ *   2. Watch history — every slug the viewer has actually played adds +1.5 to its
+ *      genres (a strong "they sat through this" signal, independent of rating).
+ *
+ * Each unseen playable title is then scored by how much its genres overlap that
+ * affinity, with a small quality nudge (tmdbVoteAverage) as the tie-breaker and the
+ * cold-start ranking. New users (no ratings, no history) therefore get the best-
+ * reviewed playable titles; as they rate and watch, the row diverges toward their
+ * taste — different viewers see genuinely different line-ups. All zero backend calls.
+ */
+export function recommendPlayable(
+  ratings: Map<number, number>,
+  watchedSlugs: string[] = [],
+  n = 14,
+): CatalogEntry[] {
+  const genreScore = new Map<string, number>();
+  const seen = new Set<number>();
+
+  ratings.forEach((rating, movieId) => {
+    seen.add(movieId);
+    const e = CATALOG.find((c) => c.movieId === movieId);
+    if (!e) return;
+    const w = rating - 2.5;
+    for (const g of e.genres) genreScore.set(g, (genreScore.get(g) ?? 0) + w);
+  });
+
+  for (const slug of watchedSlugs) {
+    const e = getCatalogEntryBySlug(slug);
+    if (!e) continue;
+    seen.add(e.movieId);
+    for (const g of e.genres) genreScore.set(g, (genreScore.get(g) ?? 0) + 1.5);
+  }
+
+  return CATALOG.filter((c) => c.playable && !seen.has(c.movieId))
+    .map((c) => ({
+      c,
+      score:
+        c.genres.reduce((s, g) => s + (genreScore.get(g) ?? 0), 0) + c.tmdbVoteAverage * 0.15,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+    .map((s) => s.c);
+}
+
 const sec = (browseSection: string, o: Omit<CatalogEntry, 'browseSection'>): CatalogEntry => ({
   browseSection,
   ...o,
@@ -322,8 +403,8 @@ export const CATALOG: CatalogEntry[] = [
     overview:
       'A gifted underdog battles doubt, fierce rivalry and the crushing weight of expectation in a high-energy story about earning the title of greatest of all time.',
     genres: ['Drama', 'Sport'], // verify
-    playable: false, // FLIP:goat-2026
-    comingSoon: true, // FLIP:goat-2026
+    playable: true, // FLIP-DONE:goat-2026
+    comingSoon: false, // FLIP-DONE:goat-2026
     hdFeatured: true,
     kenyanOriginal: false,
     panAfrican: false,
@@ -370,8 +451,8 @@ export const CATALOG: CatalogEntry[] = [
     overview:
       'Two elite private-security operatives are forced into a moral grey zone when a high-risk protection job spirals into a desperate fight for survival.',
     genres: ['Action', 'Thriller'],
-    playable: false, // FLIP:in-the-grey-2026
-    comingSoon: true, // FLIP:in-the-grey-2026
+    playable: true, // FLIP-DONE:in-the-grey-2026
+    comingSoon: false, // FLIP-DONE:in-the-grey-2026
     hdFeatured: true,
     kenyanOriginal: false,
     panAfrican: false,
@@ -418,8 +499,8 @@ export const CATALOG: CatalogEntry[] = [
     overview:
       'The epic story of the King of Pop - from child star to global icon - tracing the music, the milestones and the controversies that defined a generation.',
     genres: ['Biography', 'Drama', 'Music'],
-    playable: false, // FLIP:michael-2026
-    comingSoon: true, // FLIP:michael-2026
+    playable: true, // FLIP-DONE:michael-2026
+    comingSoon: false, // FLIP-DONE:michael-2026
     hdFeatured: true,
     kenyanOriginal: false,
     panAfrican: false,
@@ -442,8 +523,8 @@ export const CATALOG: CatalogEntry[] = [
     overview:
       'Earthrealm\'s champions return for a brutal new tournament, facing deadlier rivals and an apocalyptic threat in the next chapter of the Mortal Kombat saga.',
     genres: ['Action', 'Fantasy', 'Adventure'],
-    playable: false, // FLIP:mortal-kombat-II-2026
-    comingSoon: true, // FLIP:mortal-kombat-II-2026
+    playable: true, // FLIP-DONE:mortal-kombat-II-2026
+    comingSoon: false, // FLIP-DONE:mortal-kombat-II-2026
     hdFeatured: true,
     kenyanOriginal: false,
     panAfrican: false,

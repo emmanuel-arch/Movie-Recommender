@@ -1,11 +1,20 @@
 <#
 .SYNOPSIS
-  Source-integrity pre-check. Fully decodes each source file and counts decoder
-  errors, so a CORRUPT download is caught BEFORE a multi-hour transcode (a damaged
-  source can only ever produce a glitchy video — re-download it instead).
+  Source pre-check: confirms a download is COMPLETE end-to-end before a multi-hour
+  transcode.
 
-  A clean file yields ~0 errors (the harmless "Referenced QT chapter track not
-  found" notice is ignored). Hundreds/thousands of errors = corrupt.
+  This script does NOT count decoder errors. Errors like "Invalid NAL unit size",
+  "missing picture in access unit" and "Error submitting packet" are endemic to YTS
+  x264 rips and ffmpeg conceals them harmlessly on transcode - a known-good,
+  currently-live title (italianna) emits 3,500+ of them, MORE than several titles
+  that an earlier error-count check falsely condemned. Counting them produced only
+  false "corrupt" alarms, so that approach was retired.
+
+  The real failure mode for a damaged download is TRUNCATION: bytes are missing, so
+  the actual video data ends before the container's declared duration (or the moov
+  header is unreadable). This script compares the last decodable video timestamp
+  against the declared duration and flags a file only when it is materially short or
+  unreadable - which is exactly what the transcoder's completeness gate also enforces.
 
 .EXAMPLE
   .\verify-source-integrity.ps1 -Slug goat-2026,in-the-grey-2026,michael-2026,mortal-kombat-II-2026
@@ -17,7 +26,7 @@ param(
   [string[]]$Slug,
   [string[]]$Path,
   [string]$SourceRoot = 'D:\',
-  [int]$ErrorThreshold = 50
+  [double]$Tolerance = 0.02   # actual end must be within 2% of declared duration
 )
 $ErrorActionPreference = 'Continue'
 
@@ -26,22 +35,44 @@ if ($Slug) { foreach ($s in $Slug) { $files += (Join-Path (Join-Path $SourceRoot
 if ($Path) { $files += $Path }
 if (-not $files) { throw 'Pass -Slug <slug>,... or -Path <file>,...' }
 
-$bad = @()
-'{0,-44} {1,10}  {2}' -f 'SOURCE', 'ERRORS', 'VERDICT'
-'-' * 78
-foreach ($f in $files) {
-  if (-not (Test-Path -LiteralPath $f)) { '{0,-44} {1,10}  {2}' -f (Split-Path $f -Leaf), '-', 'MISSING'; continue }
-  $tmp = [System.IO.Path]::GetTempFileName()
-  # full decode to null; -v error keeps only decode errors on stderr.
-  & ffmpeg -hide_banner -v error -i $f -f null - 2> $tmp | Out-Null
-  $errs = @(Get-Content -LiteralPath $tmp -ErrorAction SilentlyContinue |
-            Where-Object { $_ -and $_ -notmatch 'Referenced QT chapter track not found' })
-  Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
-  $n = $errs.Count
-  $verdict = if ($n -le $ErrorThreshold) { 'CLEAN' } else { 'CORRUPT - re-download'; }
-  if ($n -gt $ErrorThreshold) { $bad += (Split-Path $f -Leaf) }
-  '{0,-44} {1,10}  {2}' -f (Split-Path $f -Leaf), $n, $verdict
+function Format-HMS([double]$sec) {
+  $ts = [TimeSpan]::FromSeconds([math]::Max(0, $sec))
+  '{0:00}:{1:00}:{2:00}' -f [int]$ts.TotalHours, $ts.Minutes, $ts.Seconds
 }
-'-' * 78
-if ($bad.Count) { Write-Host ("CORRUPT (replace these): " + ($bad -join ', ')) -ForegroundColor Red }
-else { Write-Host 'All sources decode clean.' -ForegroundColor Green }
+
+$bad = @()
+'{0,-44} {1,10} {2,10}  {3}' -f 'SOURCE', 'DECLARED', 'ACTUAL', 'VERDICT'
+'-' * 86
+foreach ($f in $files) {
+  if (-not (Test-Path -LiteralPath $f)) {
+    '{0,-44} {1,10} {2,10}  {3}' -f (Split-Path $f -Leaf), '-', '-', 'MISSING'
+    continue
+  }
+
+  # Declared duration from the container header. If this fails the moov/header is
+  # unreadable - typically a download truncated before its trailing moov atom.
+  $declared = [double](& ffprobe -v error -show_entries format=duration `
+                         -of default=noprint_wrappers=1:nokey=1 -- "$f" 2>$null)
+  if (-not $declared -or $declared -le 0) {
+    '{0,-44} {1,10} {2,10}  {3}' -f (Split-Path $f -Leaf), '-', '-', 'UNREADABLE - re-download'
+    $bad += (Split-Path $f -Leaf)
+    continue
+  }
+
+  # Actual end: largest video packet timestamp. Demux only the last ~10% (fast, no
+  # decode) to find where real data stops. A truncated download has no packets out
+  # there, so $actual stays far below $declared.
+  $start = [int]([math]::Max(0, $declared * 0.90))
+  $pts = @(& ffprobe -v error -select_streams v:0 -read_intervals "$start%+99999" `
+             -show_entries packet=pts_time -of csv=p=0 -- "$f" 2>$null) |
+         Where-Object { $_ -match '^[\d.]+$' }
+  $actual = if ($pts) { [double]($pts | Measure-Object -Maximum).Maximum } else { 0.0 }
+
+  $drift   = [math]::Abs($declared - $actual) / $declared
+  $verdict = if ($drift -le $Tolerance) { 'COMPLETE' } else { 'TRUNCATED - re-download' }
+  if ($drift -gt $Tolerance) { $bad += (Split-Path $f -Leaf) }
+  '{0,-44} {1,10} {2,10}  {3}' -f (Split-Path $f -Leaf), (Format-HMS $declared), (Format-HMS $actual), $verdict
+}
+'-' * 86
+if ($bad.Count) { Write-Host ("REPLACE these (incomplete/unreadable downloads): " + ($bad -join ', ')) -ForegroundColor Red }
+else { Write-Host 'All sources are complete end-to-end.' -ForegroundColor Green }

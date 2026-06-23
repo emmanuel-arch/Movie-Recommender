@@ -15,9 +15,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import { X, Check, Loader2, ChevronRight } from 'lucide-react';
+import { X, Check, Loader2, ChevronRight, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/AuthProvider';
+import { createAccountUrl } from '@/lib/hubUrl';
 
 type Mode = 'signup' | 'signin';
 
@@ -43,14 +44,12 @@ export default function AuthModal({
   subtitle = 'Create a free BirgenAI account',
   defaultMode = 'signup',
 }: AuthModalProps) {
-  const { signUp, signInWithPassword, signInWithOAuth, configured } = useAuth();
+  const { signInWithPassword, signInWithOAuth, configured } = useAuth();
   const [mode, setMode] = useState<Mode>(defaultMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -60,31 +59,12 @@ export default function AuthModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Sign-in stays local (SSO-backed). Account *creation* is centralized at the
+  // Hub, so signup mode renders a CTA to birgenai.com instead of a form.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
     setLoading(true);
-    if (mode === 'signup') {
-      const { error: err, needsConfirmation } = await signUp(
-        email,
-        password,
-        displayName || undefined,
-      );
-      setLoading(false);
-      if (err) {
-        setError(err);
-        return;
-      }
-      if (needsConfirmation) {
-        setSuccess('Check your inbox to confirm your email, then sign in.');
-      } else {
-        // Auto-confirm is on — send them through the profile picker flow.
-        window.location.href = '/profiles';
-      }
-      return;
-    }
-
     const { error: err } = await signInWithPassword(email, password);
     setLoading(false);
     if (err) {
@@ -157,53 +137,55 @@ export default function AuthModal({
             <div className="flex-1 h-px bg-birgen-border" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {mode === 'signup' && (
+          {mode === 'signup' ? (
+            <div className="space-y-3">
+              <p className="text-birgen-silver text-sm leading-relaxed">
+                Your BirgenAI account is created once on{' '}
+                <span className="text-white font-medium">birgenai.com</span> and works across
+                Movies and every other BirgenAI app.
+              </p>
+              <a
+                href={createAccountUrl(email)}
+                className="w-full py-3 bg-birgen-red hover:bg-birgen-red-light text-white font-semibold text-sm rounded-md transition-all hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2"
+              >
+                Create your account
+                <ArrowRight className="w-4 h-4" />
+              </a>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-3">
               <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name (optional)"
-                autoComplete="name"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                autoComplete="email"
+                required
                 className="w-full px-4 py-2.5 bg-birgen-card border border-birgen-border rounded-md text-white text-sm placeholder-birgen-muted focus:outline-none focus:border-birgen-red transition-colors"
               />
-            )}
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email address"
-              autoComplete="email"
-              required
-              className="w-full px-4 py-2.5 bg-birgen-card border border-birgen-border rounded-md text-white text-sm placeholder-birgen-muted focus:outline-none focus:border-birgen-red transition-colors"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              required
-              minLength={6}
-              className="w-full px-4 py-2.5 bg-birgen-card border border-birgen-border rounded-md text-white text-sm placeholder-birgen-muted focus:outline-none focus:border-birgen-red transition-colors"
-            />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+                required
+                minLength={6}
+                className="w-full px-4 py-2.5 bg-birgen-card border border-birgen-border rounded-md text-white text-sm placeholder-birgen-muted focus:outline-none focus:border-birgen-red transition-colors"
+              />
 
-            {error && (
-              <p className="text-red-400 text-xs">{error}</p>
-            )}
-            {success && (
-              <p className="text-green-400 text-xs">{success}</p>
-            )}
+              {error && <p className="text-red-400 text-xs">{error}</p>}
 
-            <button
-              type="submit"
-              disabled={loading || !configured}
-              className="w-full py-3 bg-birgen-red hover:bg-birgen-red-light disabled:bg-birgen-red/40 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-md transition-all hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2"
-            >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'signup' ? 'Create free account' : 'Sign in'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading || !configured}
+                className="w-full py-3 bg-birgen-red hover:bg-birgen-red-light disabled:bg-birgen-red/40 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-md transition-all hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2"
+              >
+                {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Sign in
+              </button>
+            </form>
+          )}
 
           {/* Switch mode */}
           <p className="text-center text-birgen-muted text-xs mt-4">
@@ -213,7 +195,6 @@ export default function AuthModal({
               onClick={() => {
                 setMode(mode === 'signup' ? 'signin' : 'signup');
                 setError(null);
-                setSuccess(null);
               }}
               className="text-white hover:text-birgen-red font-medium transition-colors"
             >

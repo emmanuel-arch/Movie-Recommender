@@ -33,7 +33,6 @@ param(
   [Parameter(Mandatory = $true)][Alias('Input')][string]$InputPath,
   [Parameter(Mandatory = $true)][string]$Slug,
   [double]$DurationTolerance = 0.02,
-  [int]$MaxSourceDecodeErrors = 200,
   [switch]$Force
 )
 
@@ -96,9 +95,13 @@ foreach ($r in $Renditions) {
   # gaps still encodes start-to-finish instead of aborting early.
   $vf = "scale=$($r.W):$($r.H):force_original_aspect_ratio=decrease:flags=lanczos:force_divisible_by=2," +
         "pad=$($r.W):$($r.H):(ow-iw)/2:(oh-ih)/2,setsar=1"
-  # Capture ffmpeg's stderr so we can detect a CORRUPT source for free (the encode
-  # already decodes the whole file). A damaged source emits thousands of decoder
-  # errors and can only ever produce a glitchy video, so we fail rather than ship it.
+  # Keep ffmpeg's stderr as a diagnostic log (deleted on success). We deliberately do
+  # NOT gate on decoder-error COUNT: "Invalid NAL unit size" / "missing picture in
+  # access unit" / "Error submitting packet" are endemic to YTS x264 rips and ffmpeg
+  # conceals them harmlessly - a known-good, currently-live title (italianna) emits
+  # 3,500+ of them, more than several titles that were falsely condemned. Counting
+  # them only produces false "corrupt" alarms. The one real failure mode (a truncated
+  # source) is caught instead by the noise-free COMPLETENESS GATE below.
   $errLog = Join-Path $rdir 'encode.err'
   & ffmpeg -hide_banner -loglevel error -y -fflags +genpts -i $InputPath `
       -map 0:v:0 -map 0:a:0 `
@@ -109,17 +112,9 @@ foreach ($r in $Renditions) {
       -hls_segment_filename (Join-Path $rdir 'seg%05d.ts') `
       (Join-Path $rdir 'stream.m3u8') 2> $errLog
   if ($LASTEXITCODE -ne 0 -or -not (Test-RenditionComplete $rdir)) {
-    throw "Encode failed/incomplete for $($r.Name) (re-run to resume from this rendition)."
+    throw "Encode failed/incomplete for $($r.Name) (re-run to resume from this rendition). See $errLog."
   }
-  $decErrs = @(Get-Content -LiteralPath $errLog -ErrorAction SilentlyContinue | Where-Object {
-    $_ -match 'Invalid NAL unit size|missing picture in access unit|Error submitting packet|reference picture missing|Missing reference picture|mmco:'
-  }).Count
   Remove-Item -LiteralPath $errLog -Force -ErrorAction SilentlyContinue
-  if ($decErrs -gt $MaxSourceDecodeErrors) {
-    throw ("SOURCE CORRUPT for ${Slug}: the $($r.Name) encode hit $decErrs decoder errors. " +
-           "The source file ($InputPath) is damaged and would produce a glitchy video. " +
-           "Re-download a clean copy, then re-run. (Run verify-source-integrity.ps1 to confirm.)")
-  }
   $rd = Get-PlaylistDuration (Join-Path $rdir 'stream.m3u8')
   Write-Host ("      done: {0} segs, {1:N0}s" -f (Get-ChildItem -LiteralPath $rdir -Filter '*.ts').Count, $rd) -ForegroundColor Green
 }

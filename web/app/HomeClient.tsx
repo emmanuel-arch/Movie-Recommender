@@ -1,28 +1,28 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { Sparkles, Star } from 'lucide-react';
 import MovieCarousel from '@/components/MovieCarousel';
 import ContinueWatchingRow from '@/components/ContinueWatchingRow';
 import {
   CATALOG,
-  isCriticallyAcclaimed,
   toMovie,
   similarCatalogEntries,
+  recommendPlayable,
   getCatalogEntryBySlug,
 } from '@/lib/catalog';
-import { getRecommendations } from '@/lib/api';
+import { KENYAN_HLS_MAP } from '@/lib/hls';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
 import { useMyList } from '@/hooks/useMyList';
+import { useContinueWatching } from '@/hooks/useWatchSession';
 import toast from 'react-hot-toast';
 
 export default function HomeClient() {
-  const [recoMovies, setRecoMovies] = useState<Movie[]>([]);
-  const [recoLoading, setRecoLoading] = useState(false);
-  const { ratings, rateMovie, count, ratedMovies, getRatingInputs } = useRatings();
+  const { ratings, rateMovie, count, ratedMovies } = useRatings();
   const { myList, addToList, removeFromList } = useMyList();
+  const { items: continueItems } = useContinueWatching();
   const myListIds = new Set(myList.map((m) => m.movieId));
 
   const handleRate = (movie: Movie, rating: number) => {
@@ -39,76 +39,62 @@ export default function HomeClient() {
     onRemoveFromList: removeFromList,
   };
 
-  useEffect(() => {
-    if (count < 5) {
-      setRecoMovies([]);
-      return;
-    }
-    let cancelled = false;
-    setRecoLoading(true);
-    const inputs = getRatingInputs();
-    getRecommendations(inputs, 16)
-      .then((rows) => {
-        if (cancelled) return;
-        const unrated = rows.filter((m) => !ratings.has(m.movieId));
-        setRecoMovies(unrated.slice(0, 14));
-      })
-      .catch(() => {
-        if (!cancelled) toast.error('Could not load recommendations');
-      })
-      .finally(() => {
-        if (!cancelled) setRecoLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [count, getRatingInputs, ratings]);
-
-  const newOnBirgen = useMemo(
+  // Slugs the viewer has actually started/finished — feeds the taste model alongside
+  // their star ratings so "Recommended for you" reflects what they *watch*, not just rate.
+  const watchedSlugs = useMemo(
     () =>
-      [...CATALOG]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .slice(0, 12)
+      continueItems
+        .map((i) => i.movieSlug ?? (i.movieId != null ? KENYAN_HLS_MAP[i.movieId] : null))
+        .filter((s): s is string => !!s),
+    [continueItems],
+  );
+
+  // ── PLAYABLE rows (the whole top of the page streams in HD) ──────────────
+
+  // Personalised, playable-only. Cold-start (no ratings/history) → best-reviewed
+  // playable titles; diverges toward the viewer's genres as they rate and watch.
+  const recommended = useMemo(
+    () => recommendPlayable(ratings, watchedSlugs, 14).map(toMovie),
+    [ratings, watchedSlugs],
+  );
+
+  const playable = useMemo(() => CATALOG.filter((c) => c.playable), []);
+
+  const actionBlockbusters = useMemo(
+    () =>
+      playable
+        .filter((c) => c.genres.some((g) => g === 'Action' || g === 'Adventure'))
         .map(toMovie),
-    [],
+    [playable],
   );
 
-  const kenyanOriginals = useMemo(
-    () => CATALOG.filter((c) => c.kenyanOriginal).map(toMovie),
-    [],
-  );
-
-  const criticallyAcclaimed = useMemo(
-    () => CATALOG.filter((c) => isCriticallyAcclaimed(c)).map(toMovie),
-    [],
-  );
-
-  const darkPsych = useMemo(
-    () => CATALOG.filter((c) => c.darkPsychological).map(toMovie),
-    [],
-  );
-
-  const africanStories = useMemo(
-    () => CATALOG.filter((c) => c.panAfrican).map(toMovie),
-    [],
-  );
-
-  // Genre rows — let each HD title also live in a genre-coherent row. The action
-  // tentpoles land here; Candy Jar (Drama/Comedy) is excluded and surfaces in feel-good.
-  const actionAdventure = useMemo(
+  const crimeThrillers = useMemo(
     () =>
-      CATALOG.filter((c) => c.genres.some((g) => g === 'Action' || g === 'Adventure')).map(
-        toMovie,
-      ),
-    [],
+      playable
+        .filter((c) => c.genres.some((g) => g === 'Thriller' || g === 'Crime' || g === 'Mystery'))
+        .map(toMovie),
+    [playable],
   );
 
-  const feelGood = useMemo(
+  const comedyFeelGood = useMemo(
     () =>
-      CATALOG.filter((c) => c.genres.some((g) => g === 'Comedy' || g === 'Family')).map(toMovie),
-    [],
+      playable
+        .filter((c) => c.genres.some((g) => g === 'Comedy' || g === 'Family' || g === 'Animation'))
+        .map(toMovie),
+    [playable],
   );
 
+  const acclaimedNowStreaming = useMemo(
+    () =>
+      [...playable]
+        .filter((c) => c.tmdbVoteAverage >= 7.6)
+        .sort((a, b) => b.tmdbVoteAverage - a.tmdbVoteAverage)
+        .map(toMovie),
+    [playable],
+  );
+
+  // "Because you watched X" — seeded from the latest rating, but only ever suggests
+  // playable titles so the row stays clickable-to-stream.
   const becauseSeed = ratedMovies[ratedMovies.length - 1]?.movie;
   const becauseEntry = becauseSeed
     ? CATALOG.find((c) => c.movieId === becauseSeed.movieId) ||
@@ -116,19 +102,34 @@ export default function HomeClient() {
     : undefined;
   const becauseYouWatched = useMemo(() => {
     if (!becauseEntry) return [];
-    return similarCatalogEntries(becauseEntry, 8).map(toMovie);
+    return similarCatalogEntries(becauseEntry, 16)
+      .filter((c) => c.playable && c.movieId !== becauseEntry.movieId)
+      .slice(0, 10)
+      .map(toMovie);
   }, [becauseEntry]);
 
   const rateMorePool = useMemo(() => {
-    const unrated = CATALOG.filter((c) => !ratings.has(c.movieId));
-    return [...unrated]
+    return [...playable]
+      .filter((c) => !ratings.has(c.movieId))
       .sort((a, b) => b.tmdbVoteAverage - a.tmdbVoteAverage)
       .slice(0, 14)
       .map(toMovie);
-  }, [ratings]);
+  }, [playable, ratings]);
+
+  // ── COMING-SOON rows (not yet streamable — anchored to the bottom) ───────
+  const kenyanOriginals = useMemo(
+    () => CATALOG.filter((c) => c.kenyanOriginal).map(toMovie),
+    [],
+  );
+
+  const africanStories = useMemo(
+    () => CATALOG.filter((c) => c.panAfrican && !c.kenyanOriginal).map(toMovie),
+    [],
+  );
 
   const comingSoonRow = useMemo(
-    () => CATALOG.filter((c) => c.comingSoon).map(toMovie),
+    () =>
+      CATALOG.filter((c) => c.comingSoon && !c.kenyanOriginal && !c.panAfrican).map(toMovie),
     [],
   );
 
@@ -142,70 +143,50 @@ export default function HomeClient() {
     <div className="pb-8">
       <ContinueWatchingRow />
 
-      {count >= 5 && (
-        <MovieCarousel
-          title="Recommended for you"
-          subtitle="From your taste profile — unlocks after 5+ ratings"
-          movies={recoMovies}
-          loading={recoLoading}
-          badge={watchOnBadge}
-          {...carouselProps}
-        />
-      )}
-
       <MovieCarousel
-        title="Kenyan originals"
-        subtitle="Our homegrown lane — plus locked originals staging on the platform"
-        movies={kenyanOriginals}
+        title="Recommended for you"
+        subtitle={
+          count > 0
+            ? 'Tuned to the titles you rate and watch — all streaming now'
+            : 'Top picks streaming now — rate a few to make these yours'
+        }
+        movies={recommended}
+        badge={watchOnBadge}
         {...carouselProps}
       />
 
       <MovieCarousel
-        title="Critically acclaimed"
-        subtitle="TMDB-loved titles curated for your mood profile"
-        movies={criticallyAcclaimed}
+        title="Action & blockbusters"
+        subtitle="High-octane tentpoles — chases, heists, and impossible odds, all in HD"
+        movies={actionBlockbusters}
         {...carouselProps}
       />
 
       <MovieCarousel
-        title="Action & adventure"
-        subtitle="High-octane tentpoles — chases, heists, and impossible odds"
-        movies={actionAdventure}
+        title="Crime, thrillers & mind-benders"
+        subtitle="High stakes, moral grey zones, twists you won't see coming"
+        movies={crimeThrillers}
         {...carouselProps}
       />
 
       <MovieCarousel
-        title="Dark & psychological"
-        subtitle="High stakes, moral grey zones, cinematic shadows"
-        movies={darkPsych}
+        title="Laugh-out-loud & feel-good"
+        subtitle="Lighter, warmer, funnier — easy streams for any night"
+        movies={comedyFeelGood}
         {...carouselProps}
       />
 
       <MovieCarousel
-        title="African stories"
-        subtitle="Nollywood · South Africa · East Africa · pan-African voices"
-        movies={africanStories}
-        {...carouselProps}
-      />
-
-      <MovieCarousel
-        title="Feel-good favourites"
-        subtitle="Lighter, warmer, funnier — easy watches for any night"
-        movies={feelGood}
-        {...carouselProps}
-      />
-
-      <MovieCarousel
-        title="New on BirgenAI"
-        subtitle="Recently dated on the roadmap — check back as shipments land"
-        movies={newOnBirgen}
+        title="Critically acclaimed — now streaming"
+        subtitle="The highest-rated titles in the catalogue, ready to play"
+        movies={acclaimedNowStreaming}
         {...carouselProps}
       />
 
       {becauseEntry && becauseYouWatched.length > 0 && (
         <MovieCarousel
           title={`Because you watched ${becauseEntry.displayTitle}`}
-          subtitle="Picks stitched from overlapping DNA in your catalogue"
+          subtitle="Streaming picks stitched from overlapping DNA in your taste"
           movies={becauseYouWatched}
           {...carouselProps}
         />
@@ -214,11 +195,26 @@ export default function HomeClient() {
       {count < 10 && rateMorePool.length > 0 && (
         <MovieCarousel
           title="Rate more, get better picks"
-          subtitle="Quick taps train the algo — no typing required"
+          subtitle="Quick taps train your row above — no typing required"
           movies={rateMorePool}
           {...carouselProps}
         />
       )}
+
+      {/* ── Coming soon / not yet streaming — anchored below the playable rows ── */}
+      <MovieCarousel
+        title="Kenyan originals"
+        subtitle="Our homegrown lane — staging on the platform, launching soon"
+        movies={kenyanOriginals}
+        {...carouselProps}
+      />
+
+      <MovieCarousel
+        title="African stories"
+        subtitle="Nollywood · South Africa · pan-African voices — licensing soon"
+        movies={africanStories}
+        {...carouselProps}
+      />
 
       <MovieCarousel
         title="Coming soon"
@@ -233,11 +229,11 @@ export default function HomeClient() {
             <Star className="w-7 h-7 text-birgen-red" />
           </div>
           <h3 className="text-white text-2xl font-bold mb-2">
-            Rate {5 - count} more movie{5 - count !== 1 ? 's' : ''} to unlock your picks
+            Rate a few titles to personalise your picks
           </h3>
           <p className="text-birgen-muted mb-6 max-w-md mx-auto">
-            BirgenAI needs at least 5 ratings to light up the full recommendation engine — use Train Your AI for
-            the TMDB catalogue, while you watch the Kenyan lane here.
+            Tap the stars on any movie you&apos;ve seen — your &ldquo;Recommended for you&rdquo; row
+            re-tunes instantly. Or train on the wider TMDB catalogue for even sharper matches.
           </p>
           <Link
             href="/onboarding"

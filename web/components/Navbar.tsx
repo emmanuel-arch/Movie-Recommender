@@ -7,6 +7,7 @@ import { Search, Bell, Menu, X, User, LogOut, LogIn, Sparkles, Users, Pencil, Co
 import { useAuth } from '@/components/AuthProvider';
 import { useScreenTime } from '@/hooks/useScreenTime';
 import { moviesPremiumCheckoutUrl } from '@/lib/premiumCheckout';
+import { createAccountUrl } from '@/lib/hubUrl';
 import Avatar from '@/components/Avatar';
 
 interface NavbarProps {
@@ -359,16 +360,13 @@ export default function Navbar({ ratingCount = 0 }: NavbarProps) {
                           <LogIn className="w-4 h-4" />
                           Sign In
                         </Link>
-                        <Link
-                          href="/signup"
+                        <a
+                          href={createAccountUrl()}
                           onClick={() => setProfileOpen(false)}
-                          aria-disabled={!configured}
-                          className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-birgen-red/10 transition-colors ${
-                            !configured ? 'pointer-events-none opacity-50' : ''
-                          }`}
+                          className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-birgen-red/10 transition-colors"
                         >
                           Create account
-                        </Link>
+                        </a>
                       </>
                     )}
                   </div>

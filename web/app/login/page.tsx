@@ -22,6 +22,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, Eye, EyeOff, Mail, KeyRound, Fingerprint, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { isValidBirgenaiId, normalizeBirgenaiId } from '@/lib/birgenai';
+import { createAccountUrl } from '@/lib/hubUrl';
 
 type Method = 'email' | 'birgenai';
 
@@ -112,12 +113,12 @@ function LoginForm() {
             priority
           />
         </Link>
-        <Link
-          href="/signup"
+        <a
+          href={createAccountUrl()}
           className="text-sm font-medium text-white/85 hover:text-white transition-colors"
         >
           Create account
-        </Link>
+        </a>
       </header>
 
       {/* Card */}
@@ -243,9 +244,9 @@ function LoginForm() {
 
           <p className="text-center text-birgen-silver text-sm mt-7">
             New to BirgenAI?{' '}
-            <Link href="/signup" className="text-white hover:text-birgen-red font-medium transition-colors">
+            <a href={createAccountUrl()} className="text-white hover:text-birgen-red font-medium transition-colors">
               Create an account
-            </Link>
+            </a>
           </p>
         </div>
       </main>

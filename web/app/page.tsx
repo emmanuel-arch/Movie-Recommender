@@ -13,7 +13,8 @@ export default function HomePage() {
       <Navbar />
       <ScreenTimeBanner />
       <HeroBanner />
-      {/* Top content row: freshly added full-HD titles, ABOVE the lower-res Top 5. */}
+      {/* Top content rows — both stream in HD: the freshly-added 1080p drop, then the
+          curated Top 10 in Kenya (Get Out + Sicario + the 8 broadest-appeal HD titles). */}
       <FeaturedHDRow />
       <Top5Kenya />
       <Suspense fallback={null}>

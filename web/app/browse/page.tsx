@@ -5,45 +5,158 @@ import Navbar from '@/components/Navbar';
 import SearchBar from '@/components/SearchBar';
 import MovieCard from '@/components/MovieCard';
 import MovieCarousel from '@/components/MovieCarousel';
-import { CATALOG, toMovie } from '@/lib/catalog';
+import { CATALOG, toMovie, hdFeaturedEntries, type CatalogEntry } from '@/lib/catalog';
 import { Movie } from '@/types';
 import { useRatings } from '@/hooks/useRatings';
 import { useMyList } from '@/hooks/useMyList';
 import { Grid3X3, Rows3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const SECTIONS = Array.from(new Set(CATALOG.map((c) => c.browseSection)));
+/**
+ * Browse rows — Netflix-style. The page leads with genre rows built ONLY from
+ * streamable titles (so a viewer scans the whole library at a glance and every card
+ * plays), and condenses everything not-yet-licensed into the final two "coming soon"
+ * rows. Each row carries a short `chip` so the filter bar can jump straight to a grid
+ * of that lane. A playable title naturally appears in several rows (Fast X is in Action
+ * AND Crime AND Thriller) — that's the Netflix trick that makes the catalogue feel deep.
+ */
+interface RowDef {
+  chip: string;
+  title: string;
+  subtitle: string;
+  build: () => CatalogEntry[];
+}
+
+const playable = (pred: (c: CatalogEntry) => boolean) => () =>
+  CATALOG.filter((c) => c.playable && pred(c));
+
+const hasGenre = (c: CatalogEntry, ...g: string[]) => c.genres.some((x) => g.includes(x));
+
+const ROW_DEFS: RowDef[] = [
+  {
+    chip: 'Now in HD',
+    title: 'Now Streaming in HD',
+    subtitle: 'Freshly added — full 1080p, play now',
+    build: () => hdFeaturedEntries(),
+  },
+  {
+    chip: 'Acclaimed',
+    title: 'Critically acclaimed — now streaming',
+    subtitle: 'The highest-rated titles in the library, ready to play',
+    build: () =>
+      CATALOG.filter((c) => c.playable && c.tmdbVoteAverage >= 7.6).sort(
+        (a, b) => b.tmdbVoteAverage - a.tmdbVoteAverage,
+      ),
+  },
+  {
+    chip: 'Action',
+    title: 'Action & blockbusters',
+    subtitle: 'Chases, heists, and impossible odds — all in HD',
+    build: playable((c) => hasGenre(c, 'Action', 'Adventure')),
+  },
+  {
+    chip: 'Thrillers',
+    title: 'Thrillers & suspense',
+    subtitle: 'Edge-of-your-seat tension and ticking clocks',
+    build: playable((c) => hasGenre(c, 'Thriller')),
+  },
+  {
+    chip: 'Crime',
+    title: 'Crime & heists',
+    subtitle: 'Cartels, capers, and the people who chase them',
+    build: playable((c) => hasGenre(c, 'Crime')),
+  },
+  {
+    chip: 'Sci-fi',
+    title: 'Sci-fi & fantasy',
+    subtitle: 'Dreams, multiverses, and worlds beyond our own',
+    build: playable((c) => hasGenre(c, 'Sci-Fi', 'Fantasy')),
+  },
+  {
+    chip: 'Comedy',
+    title: 'Comedy & feel-good',
+    subtitle: 'Lighter, warmer, funnier — easy streams for any night',
+    build: playable((c) => hasGenre(c, 'Comedy', 'Family', 'Animation')),
+  },
+  {
+    chip: 'Drama',
+    title: 'Drama',
+    subtitle: 'Character, conflict, and the weight of every choice',
+    build: playable((c) => hasGenre(c, 'Drama')),
+  },
+  {
+    chip: 'Sport',
+    title: 'Sport & adrenaline',
+    subtitle: 'Rivalries, records, and the will to win',
+    build: playable((c) => hasGenre(c, 'Sport')),
+  },
+  {
+    chip: 'Horror',
+    title: 'Horror & mind-benders',
+    subtitle: 'Dread that gets under your skin',
+    build: playable((c) => hasGenre(c, 'Horror', 'Mystery')),
+  },
+  // ── Coming soon — condensed to the final two rows ──────────────────────────
+  {
+    chip: 'KE & Africa',
+    title: 'Kenyan & African originals — coming soon',
+    subtitle: 'Our homegrown lane + pan-African voices, licensing onto the platform',
+    build: () => CATALOG.filter((c) => c.comingSoon && (c.kenyanOriginal || c.panAfrican)),
+  },
+  {
+    chip: 'Coming soon',
+    title: 'Coming soon — global cinema',
+    subtitle: 'Award-winners and mind-benders — licensed windows opening next',
+    build: () =>
+      CATALOG.filter((c) => c.comingSoon && !c.kenyanOriginal && !c.panAfrican),
+  },
+];
 
 export default function BrowsePage() {
-  const [activeSection, setActiveSection] = useState<string>('All');
+  const [activeChip, setActiveChip] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'carousel'>('carousel');
   const { ratings, rateMovie, count } = useRatings();
   const { myList, addToList, removeFromList } = useMyList();
   const myListIds = new Set(myList.map((m) => m.movieId));
-
-  const allMovies = useMemo(() => CATALOG.map(toMovie), []);
 
   const handleRate = (movie: Movie, rating: number) => {
     rateMovie(movie, rating);
     toast.success(`Rated ${rating}/5`, { duration: 1500 });
   };
 
-  const filtered =
-    activeSection === 'All'
-      ? allMovies
-      : allMovies.filter((m) => {
-          const entry = CATALOG.find((c) => c.movieId === m.movieId);
-          return entry?.browseSection === activeSection;
-        });
+  const carouselProps = {
+    userRatings: ratings,
+    onRate: handleRate,
+    showRating: true,
+    myListIds,
+    onAddToList: addToList,
+    onRemoveFromList: removeFromList,
+  };
 
-  const sectionGroups = useMemo(
+  // Build every row once. De-dupe within a row by movieId (a title can match two
+  // predicates inside the same lane, e.g. Action + Adventure).
+  const rows = useMemo(
     () =>
-      SECTIONS.map((section) => ({
-        section,
-        movies: allMovies.filter((m) => CATALOG.find((c) => c.movieId === m.movieId)?.browseSection === section),
-      })).filter((g) => g.movies.length > 0),
-    [allMovies],
+      ROW_DEFS.map((def) => {
+        const seen = new Set<number>();
+        const movies = def
+          .build()
+          .filter((c) => (seen.has(c.movieId) ? false : (seen.add(c.movieId), true)))
+          .map(toMovie);
+        return { ...def, movies };
+      }).filter((r) => r.movies.length > 0),
+    [],
   );
+
+  const playableCount = useMemo(() => CATALOG.filter((c) => c.playable).length, []);
+
+  // Grid view (or a selected chip) shows a flat grid of that lane's titles.
+  const gridMovies = useMemo(() => {
+    if (activeChip === 'All') return CATALOG.map(toMovie);
+    return rows.find((r) => r.chip === activeChip)?.movies ?? [];
+  }, [activeChip, rows]);
+
+  const showCarousels = viewMode === 'carousel' && activeChip === 'All';
 
   return (
     <div className="min-h-screen bg-birgen-black">
@@ -52,8 +165,8 @@ export default function BrowsePage() {
       <div className="pt-24 pb-6 px-4 sm:px-6 lg:px-12 max-w-[1920px] mx-auto">
         <h1 className="font-display text-4xl sm:text-5xl text-white tracking-wide mb-2">BROWSE</h1>
         <p className="text-birgen-muted mb-6">
-          Full BirgenAI catalogue — {CATALOG.length} curated tiles. HD streams on the launch five; the rest signal what
-          is landing next.
+          {playableCount} titles streaming now in HD across every genre — the last two rows preview
+          what&apos;s landing next.
         </p>
 
         <SearchBar onRate={handleRate} userRatings={ratings} placeholder="Search within your session..." />
@@ -62,27 +175,27 @@ export default function BrowsePage() {
           <div className="flex gap-2 overflow-x-auto pb-1 flex-1" style={{ scrollbarWidth: 'none' }}>
             <button
               type="button"
-              onClick={() => setActiveSection('All')}
+              onClick={() => setActiveChip('All')}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                activeSection === 'All'
+                activeChip === 'All'
                   ? 'bg-birgen-red text-white'
                   : 'bg-birgen-card border border-birgen-border text-birgen-silver hover:text-white'
               }`}
             >
               All
             </button>
-            {SECTIONS.map((s) => (
+            {rows.map((r) => (
               <button
-                key={s}
+                key={r.chip}
                 type="button"
-                onClick={() => setActiveSection(s)}
+                onClick={() => setActiveChip(r.chip)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  activeSection === s
+                  activeChip === r.chip
                     ? 'bg-birgen-red text-white'
                     : 'bg-birgen-card border border-birgen-border text-birgen-silver hover:text-white'
                 }`}
               >
-                {s}
+                {r.chip}
               </button>
             ))}
           </div>
@@ -106,29 +219,25 @@ export default function BrowsePage() {
         </div>
       </div>
 
-      {viewMode === 'carousel' && activeSection === 'All' ? (
+      {showCarousels ? (
         <div className="pb-16">
-          {sectionGroups.map(({ section, movies: m }) => (
+          {rows.map((r) => (
             <MovieCarousel
-              key={section}
-              title={section}
-              movies={m}
-              userRatings={ratings}
-              onRate={handleRate}
-              showRating
-              myListIds={myListIds}
-              onAddToList={addToList}
-              onRemoveFromList={removeFromList}
+              key={r.title}
+              title={r.title}
+              subtitle={r.subtitle}
+              movies={r.movies}
+              {...carouselProps}
             />
           ))}
         </div>
       ) : (
         <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 pb-16">
           <p className="text-birgen-muted text-sm mb-5">
-            {filtered.length} titles in {activeSection === 'All' ? 'full catalogue' : activeSection}
+            {gridMovies.length} titles in {activeChip === 'All' ? 'full catalogue' : activeChip}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {filtered.map((movie) => (
+            {gridMovies.map((movie) => (
               <MovieCard
                 key={movie.movieId}
                 movie={movie}
