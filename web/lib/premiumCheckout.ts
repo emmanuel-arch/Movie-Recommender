@@ -11,10 +11,9 @@
  * www.birgenai.com; override to a localhost Hub when developing the handoff.
  */
 
-const WALLET_BASE = (process.env.NEXT_PUBLIC_WALLET_URL ?? 'https://www.birgenai.com').replace(
-  /\/+$/,
-  '',
-);
+const WALLET_BASE = (process.env.NEXT_PUBLIC_WALLET_URL ?? 'https://www.birgenai.com')
+  .trim()
+  .replace(/\/+$/, '');
 
 /**
  * URL for the BirgenAI Basic plan checkout (KSh 99/mo) — the entry subscription

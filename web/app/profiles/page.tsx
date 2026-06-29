@@ -48,7 +48,11 @@ export default function ProfilesPage() {
       return;
     }
     setActiveWatchingProfile(id);
-    router.push('/');
+    // Hard navigation (not router.push): the middleware gate for `/` reads the
+    // birgenai_wp cookie we just wrote. A soft client navigation races that
+    // cookie write — the RSC request for `/` can go out without it, so the gate
+    // sees no active profile and bounces straight back here ("nothing happens").
+    window.location.assign('/');
   };
 
   const canAddMore = watchingProfiles.length < 5;

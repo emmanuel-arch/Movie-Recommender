@@ -76,7 +76,15 @@ function NewProfileForm() {
     const data = body?.profile;
     await refreshWatchingProfiles();
     if (data) setActiveWatchingProfile(data.id);
-    router.replace(isInitial || shouldBeDefault ? '/' : '/profiles');
+    const dest = isInitial || shouldBeDefault ? '/' : '/profiles';
+    // Hard navigation when landing on `/`: that route's middleware gate reads the
+    // birgenai_wp cookie we just wrote, and a soft navigation races the write —
+    // the gate would see no active profile and bounce back to /profiles.
+    if (dest === '/') {
+      window.location.assign('/');
+    } else {
+      router.replace(dest);
+    }
   };
 
   return (

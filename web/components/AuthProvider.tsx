@@ -247,6 +247,20 @@ function AuthInner({ children }: { children: ReactNode }) {
 
   const signInWithOAuth = useCallback<AuthContextValue['signInWithOAuth']>(
     async (provider, redirectTo) => {
+      // OAuth can't complete inside the hub's iframe: Google/Apple send
+      // `X-Frame-Options: DENY` (their consent screen refuses to render framed),
+      // and the SameSite=Lax CSRF/PKCE/state cookies Auth.js sets don't round-trip
+      // on the embedded cross-site callback → "MissingCSRF". So when we're embedded,
+      // break the whole tab out to our own first-party /login and run OAuth there.
+      // (If suite SSO is configured, an authenticated hub user never reaches this —
+      // their shared session cookie already signs them in here.)
+      if (typeof window !== 'undefined' && window.top && window.top !== window.self) {
+        const target = new URL('/login', window.location.origin);
+        if (redirectTo) target.searchParams.set('callbackUrl', redirectTo);
+        // Allowed cross-origin because it runs on a user gesture (button click).
+        window.top.location.href = target.toString();
+        return;
+      }
       await nextAuthSignIn(provider, { callbackUrl: redirectTo ?? '/' });
     },
     [],
