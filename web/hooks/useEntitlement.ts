@@ -16,9 +16,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 
-type Snapshot = { isPremium: boolean; premiumUntil: string | null; error: boolean };
+type Snapshot = {
+  isPremium: boolean;
+  premiumUntil: string | null;
+  error: boolean;
+  trialExpired: boolean;
+  onTrial: boolean;
+  trialDaysLeft: number;
+};
 
-const EMPTY: Snapshot = { isPremium: false, premiumUntil: null, error: false };
+const EMPTY: Snapshot = {
+  isPremium: false,
+  premiumUntil: null,
+  error: false,
+  trialExpired: false,
+  onTrial: false,
+  trialDaysLeft: 0,
+};
 const MIN_REFETCH_MS = 15_000; // don't re-hit the DB more than ~once per 15s per tab
 
 let snapshot: Snapshot = EMPTY;
@@ -41,9 +55,12 @@ function fetchEntitlement(): Promise<void> {
         isPremium: Boolean(json?.isPremium),
         premiumUntil: (json?.premiumUntil as string | null) ?? null,
         error: Boolean(json?.error),
+        trialExpired: Boolean(json?.trialExpired),
+        onTrial: Boolean(json?.onTrial),
+        trialDaysLeft: Number(json?.trialDaysLeft ?? 0),
       };
     } catch {
-      snapshot = { isPremium: false, premiumUntil: null, error: true };
+      snapshot = { ...EMPTY, error: true };
     } finally {
       loaded = true;
       lastFetch = Date.now();
@@ -63,6 +80,12 @@ export interface EntitlementState {
   isPremium: boolean;
   premiumUntil: string | null;
   error: boolean;
+  /** Freemium 14-day trial has lapsed unpaid → show the upgrade wall. */
+  trialExpired: boolean;
+  /** On an active (unlapsed) free trial. */
+  onTrial: boolean;
+  /** Whole days left in the trial. */
+  trialDaysLeft: number;
   refresh: () => Promise<void>;
 }
 
@@ -111,6 +134,9 @@ export function useEntitlement(): EntitlementState {
     isPremium: snapshot.isPremium,
     premiumUntil: snapshot.premiumUntil,
     error: snapshot.error,
+    trialExpired: snapshot.trialExpired,
+    onTrial: snapshot.onTrial,
+    trialDaysLeft: snapshot.trialDaysLeft,
     refresh,
   };
 }

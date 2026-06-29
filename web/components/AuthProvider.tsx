@@ -34,6 +34,8 @@ import {
   signOut as nextAuthSignOut,
 } from 'next-auth/react';
 import { supabaseConfigured } from '@/lib/supabase/client';
+import { MoviesTrialGate } from '@/components/trial/MoviesTrialGate';
+import { TrialBanner } from '@/components/trial/TrialBanner';
 import type { WatchingProfile } from '@/lib/supabase/types';
 import { isValidBirgenaiId, normalizeBirgenaiId } from '@/lib/birgenai';
 
@@ -323,7 +325,15 @@ function AuthInner({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {/* Freemium gateway: a gentle "N days left" nudge during the trial, then the
+          full-screen wall once it lapses or the 3-hour cap is hit. */}
+      <TrialBanner />
+      <MoviesTrialGate />
+    </AuthContext.Provider>
+  );
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

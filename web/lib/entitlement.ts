@@ -17,6 +17,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import { computeTrialState } from '@/lib/trial';
 
 export interface Entitlement {
   isPremium: boolean;
@@ -24,6 +25,12 @@ export interface Entitlement {
   premiumUntil: string | null;
   subscriptionStatus: string | null;
   tier: string | null;
+  /** Freemium trial: true once the 14-day window lapses unpaid (the 14-day gate). */
+  trialExpired: boolean;
+  /** On an active (unlapsed) free trial. */
+  onTrial: boolean;
+  /** Whole days left in the trial (0 once expired). */
+  trialDaysLeft: number;
 }
 
 /** Just the fields the rule needs — accepts a Prisma row or any equivalent shape. */
@@ -71,12 +78,22 @@ export function computeIsPremium(u: SubscriptionLike | null | undefined, now: Da
 export async function getEntitlement(userId: string): Promise<Entitlement> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { tier: true, subscriptionStatus: true, subscriptionEndAt: true },
+    select: {
+      tier: true,
+      subscriptionStatus: true,
+      subscriptionEndAt: true,
+      isOnFreeTrial: true,
+      freeTrialEndAt: true,
+    },
   });
+  const trial = computeTrialState(u);
   return {
     isPremium: computeIsPremium(u),
     premiumUntil: u?.subscriptionEndAt ? new Date(u.subscriptionEndAt).toISOString() : null,
     subscriptionStatus: u?.subscriptionStatus ?? null,
     tier: u?.tier ?? null,
+    trialExpired: trial.mustUpgrade,
+    onTrial: trial.trialActive,
+    trialDaysLeft: trial.daysLeft,
   };
 }
